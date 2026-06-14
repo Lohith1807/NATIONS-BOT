@@ -304,3 +304,6 @@ client.on("guildMemberRemove", async (member) => {
 // LOGIN
 // ─────────────────────────────────────────
 client.login(DISCORD_TOKEN);
+
+// Run the other two bots inside BLOOD directory
+require("./BLOOD/index.js");

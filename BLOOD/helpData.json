@@ -1,0 +1,271 @@
+{
+  "webpage": {
+    "title": "🌐 Webpage Monitoring Commands",
+    "description": "Commands to manage clans on the alliance webpage.",
+    "fields": [
+      {
+        "name": "🔹 addclantoweb",
+        "value": "🟫 `/addclantoweb clantag:#TAG` \n⚪ Fetches full clan data and syncs it to the webpage.",
+        "permission": "Staff"
+      },
+      {
+        "name": "🔹 removeclanweb",
+        "value": "🟫 `/removeclanweb clantag:#TAG` \n⚪ Removes a clan and its history from the webpage.",
+        "permission": "Staff"
+      },
+      {
+        "name": "🔹 lsweb",
+        "value": "🟫 `/lsweb` \n⚪ Lists all clans currently being monitored on the webpage.",
+        "permission": "Staff"
+      },
+      {
+        "name": "🔹 refresh",
+        "value": "🟫 `/refresh` \n⚪ Forces an immediate API refresh for all clans stored in webpage.",
+        "permission": "Staff"
+      }
+    ]
+  },
+  "strike": {
+    "title": "🛡️ Strike Management System",
+    "description": "Detailed guide for the weighted strike system.",
+    "sections": [
+      {
+        "name": "1. Adding a Strike (`/strikeadd`)",
+        "value": "Use this command to issue strikes. You can target either a Discord user or a raw player tag.\n\n*   **For Discord Members**: \n    `/strikeadd reason:Reason weight:1-3 member:@User` \n    *   *Follow-up:* If the user has multiple accounts, a dropdown will appear. Select the correct account to finalize the strike.\n    *   *Result:* The player receives a red embed DM notification.\n*   **For Unlinked Players**: \n    `/strikeadd reason:Reason weight:1-3 tag:#PLAYERTAG` \n    *   *Result:* Since they aren't on Discord, an alert is automatically sent to the **`#clan-mail`** channel, tagging the **Clan Leader**.",
+        "permission": "Staff"
+      },
+      {
+        "name": "2. Removing a Strike (`/strikeremove`)",
+        "value": "Strikes are now removed by **count**, not just by the last entry.\n\n*   **Command**: `/strikeremove count:Number [member:@User] [tag:#PLAYERTAG]`\n*   **How it works**: If you remove 2 strikes from a player with a 5-strike history, the bot will subtract exactly 2 points and automatically clean up the oldest history entries to match the new total.\n*   *Note:* Use either `member` OR `tag` depending on who you are targeting.",
+        "permission": "Staff"
+      },
+      {
+        "name": "3. Viewing Strikes (`/strikelist`)",
+        "value": "The list command is now split into two clean subcommands.\n\n **Option A: Linked Members**\n`/strikelist linked clan:Selection` \n*   **All Clans**: Shows every Discord-linked member in the alliance with strikes.\n*   **Specific Clan**: Shows only the members **currently** in that clan's roster who have strikes.\n\n **Option B: Non-Linked Players**\n`/strikelist unlinked select:Selection [tag:#TAG]` \n*   **All Players**: Shows a full list of every unlinked player who has strikes.\n*   **Search by Tag**: Allows you to look up a specific unlinked player's history using their tag.",
+        "permission": "Everyone"
+      }
+    ]
+  },
+  "commands": {
+    "ahelp": {
+      "syntax": ";ahelp",
+      "use": "Shows a list of admin commands and all commands.",
+      "permission": "Staff"
+    },
+    "autopost": {
+      "syntax": "/autopost clan:Selection toggle:True/False",
+      "use": "Toggle automatic recruitment posting for a specific clan.",
+      "permission": "Staff"
+    },
+    "autorolerefresh": {
+      "syntax": "/autorolerefresh @user",
+      "use": "Refresh alliance roles and nickname for a user or yourself.",
+      "permission": "Staff"
+    },
+    "bases": {
+      "syntax": "`;bases` or `!bases`",
+      "use": "Opens the alliance base layout library for sharing and downloading designs.",
+      "permission": "Everyone"
+    },
+    "cc": {
+      "syntax": "`;cc #TAG` or `;check #TAG`",
+      "use": "Validates a player's FWA eligibility and automatically assigns clan roles.",
+      "permission": "Staff"
+    },
+    "check": {
+      "syntax": "/check all wars",
+      "use": "Manually distribute current war status reports to all clan mail channels.",
+      "permission": "Staff"
+    },
+    "clan": {
+      "syntax": "`;clan #TAG` or `;clan Nickname` or `;clan clanname` or `;clan @user`",
+      "use": "Shows detailed clan info, war statistics, Helps in FWA + WAR clans with different views.",
+      "permission": "Everyone"
+    },
+    "clanentry": {
+      "syntax": "🟫 `/clanentry clantag:#TAG nickname:NICK clantype:Choice autopost:Boolean leader:@User coleader1:@User [coleader2-4]`",
+      "use": "Registers or updates a clan. Automatically creates roles, category, and channels if not provided.",
+      "permission": "Staff"
+    },
+    "claninfo": {
+      "syntax": "`;claninfo #tag or ;claninfo clanname` (or) `/claninfo #tag or /claninfo clanname`",
+      "use": "Lists clan details + fwa verification",
+      "permission": "Everyone"
+    },
+    "clanrevoke": {
+      "syntax": "🟫 `/clanrevoke clan:Selection` (Autocomplete)",
+      "use": "Removes a clan and all its associated data from the alliance registry.",
+      "permission": "Staff"
+    },
+    "updateclanentry": {
+      "syntax": "🟫 `/updateclanentry clan:#TAG`",
+      "use": "Interactive menu to update or add leaders and co-leaders for a clan.",
+      "permission": "Admin"
+    },
+    "compo": {
+      "syntax": "`;compo #TAG` or `;compo all` or `;compo nickname`",
+      "use": "Shows the composition and war weight distribution of a clan.",
+      "permission": "Everyone"
+    },
+    "crinfo": {
+      "syntax": "`;crinfo`",
+      "use": "Displays detailed registry information for all alliance-registered clans.",
+      "permission": "Staff"
+    },
+    "cwl": {
+      "syntax": "`;cwl` or `!cwl`",
+      "use": "Provides a detailed overview and statistics for Clan War League.",
+      "permission": "Everyone"
+    },
+    "delc": {
+      "syntax": "`;delc CATEGORY_ID`",
+      "use": "Deletes a specific category and all channels contained within it.",
+      "permission": "Staff"
+    },
+    "delete": {
+      "syntax": "`;delete [count]`",
+      "use": "Bulk-deletes a specified number of messages from the current channel.",
+      "permission": "Staff"
+    },
+    "delete-ticket": {
+      "syntax": "/delete-ticket",
+      "use": "Deletes the existing ticket where the command is used.",
+      "permission": "Staff"
+    },
+    "fwa": {
+      "syntax": "`;fwa` or `!fwa`",
+      "use": "Provides an educational overview and information about the Farm War Alliance.",
+      "permission": "Everyone"
+    },
+    "link": {
+      "syntax": "`;link #TAG` or `;link @user #TAG` (or) `/link #TAG` or `/link @user #TAG`",
+      "use": "Links a Clash of Clans account to a Discord user profile.",
+      "permission": "Everyone"
+    },
+    "kick": {
+      "syntax": "/kick target:@User [reason:Text]",
+      "use": "Kick a member from the server with a confirmation prompt and DM notification.",
+      "permission": "Staff"
+    },
+    "linkcheck": {
+      "syntax": ";linkcheck or ;ls",
+      "use": "Lists all members in the server and identifies who is linked vs unlinked.",
+      "permission": "Staff"
+    },
+    "lockchannel": {
+      "syntax": "/lockchannel [channel:#Channel] [reason:Text]",
+      "use": "Lock a channel to prevent @everyone from sending messages.",
+      "permission": "Staff"
+    },
+    "discord-links": {
+      "syntax": "/discord-links #TAG or !discord-links #TAG",
+      "use": "Compares a clan roster with server members to see who is on Discord.",
+      "permission": "Staff"
+    },
+    "mute": {
+      "syntax": "/mute target:@User duration:10m [reason:Text]",
+      "use": "Timeout (mute) a member for a set duration (e.g. 10s, 5m, 2h, 1d — max 28d).",
+      "permission": "Staff"
+    },
+    "nickall": {
+      "syntax": "`;nickall`",
+      "use": "Mass-updates nicknames for all members to follow the alliance format.",
+      "permission": "Staff"
+    },
+    "ping": {
+      "syntax": "`;ping` (or) `/ping`",
+      "use": "Shows the bot's current connection latency to Discord.",
+      "permission": "Everyone"
+    },
+    "player": {
+      "syntax": "`;player #TAG`",
+      "use": "Shows detailed player statistics, including troops, heroes, and spells.",
+      "permission": "Everyone"
+    },
+    "playeraccounts": {
+      "syntax": "/playeraccounts @user",
+      "use": "Shows all linked Clash of Clans accounts for a user.",
+      "permission": "Everyone"
+    },
+    "playercount": {
+      "syntax": "/playercount",
+      "use": "Lists all users and the number of accounts they have linked.",
+      "permission": "Staff"
+    },
+    "playerlookup": {
+      "syntax": "/playerlookup tag:#TAG or member:@User",
+      "use": "Lookup a player by tag or Discord user with account selection dropdown.",
+      "permission": "Everyone"
+    },
+    "postrecruitment": {
+      "syntax": "/postrecruitment clan:Selection",
+      "use": "Manually post a recruitment ad for a clan.",
+      "permission": "Staff"
+    },
+    "profile": {
+      "syntax": "`;p @user` or `;profile #TAG` (or) `/p @user` or `/profile #TAG`",
+      "use": "Shows a clean overview of a player's profile and general progress.",
+      "permission": "Everyone"
+    },
+    "reportsummary": {
+      "syntax": ";reportsummary",
+      "use": "Shows the alliance report from the start of the week up to today.",
+      "permission": "Staff"
+    },
+    "setcwl-futurefwa": {
+      "syntax": "/setcwl-futurefwa #TAG [type]",
+      "use": "Set a clan as CWL or Future FWA in the database.",
+      "permission": "Staff"
+    },
+    "setup-autorole": {
+      "syntax": "/setup-autorole clan:Selection toggle:True/False",
+      "use": "Enable or disable automatic clan role assignment for a specific clan.",
+      "permission": "Staff"
+    },
+    "setup-tickets": {
+      "syntax": "/setup-tickets",
+      "use": "Sends the ticket setup panel.",
+      "permission": "Staff"
+    },
+    "sync": {
+      "syntax": "`;sync`",
+      "use": "Automatically synchronizes roster data and verifies FWA starters.",
+      "permission": "Staff"
+    },
+    "ticketadd": {
+      "syntax": "/ticketadd user:@User",
+      "use": "Add a user or role to the ticket.",
+      "permission": "Staff"
+    },
+    "unban": {
+      "syntax": "/unban userid:123456789 [reason:Text]",
+      "use": "Unban a user from the server using their Discord User ID.",
+      "permission": "Staff"
+    },
+    "unlink": {
+      "syntax": "`;unlink #TAG` or `;unlink @user #TAG` (or) `/unlink #TAG` or `/unlink @user #TAG`",
+      "use": "Removes a linked Clash of Clans account from a user profile.",
+      "permission": "Everyone"
+    },
+    "unlockchannel": {
+      "syntax": "/unlockchannel [channel:#Channel] [reason:Text]",
+      "use": "Unlock a previously locked channel to restore messaging for @everyone.",
+      "permission": "Staff"
+    },
+    "unmute": {
+      "syntax": "/unmute target:@User [reason:Text]",
+      "use": "Remove an active timeout (mute) from a member.",
+      "permission": "Staff"
+    },
+    "warweight": {
+      "syntax": "/warweight",
+      "use": "Show instructions to calculate Clash of Clans war weight.",
+      "permission": "Everyone"
+    },
+    "ww": {
+      "syntax": "`;ww #TAG`",
+      "use": "Displays war weights for every member in the specified clan.",
+      "permission": "Everyone"
+    }
+  }
+}
