@@ -4,7 +4,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const { getDetailEmbed, getBannerFiles } = require('./data.js');
 
-const BOT1_TOKEN     = process.env.BOT1_TOKEN;
+const BOT1_TOKEN     = process.env.BOT1_TOKEN || process.env.DISCORD_TOKEN;
 const BOT1_CLIENT_ID = "1509906435402760202";
 
 const bot1 = new Client({
@@ -47,6 +47,22 @@ bot1.on("interactionCreate", async (interaction) => {
             await command.execute(interaction);
         } else if (interaction.isStringSelectMenu()) {
             const id = interaction.customId;
+
+            if (id === 'todo_select') {
+                if (!interaction.member.permissions.has("Administrator")) {
+                    return interaction.reply({ content: "❌ You need administrator permissions to complete tasks.", ephemeral: true });
+                }
+                const { removeTodo, getTodoListEmbed, getTodoComponents } = require('./todoManager.js');
+                const selectedId = interaction.values[0];
+                removeTodo(selectedId);
+
+                await interaction.update({
+                    embeds: [getTodoListEmbed()],
+                    components: getTodoComponents(false)
+                });
+                return;
+            }
+
             const isOurs = id.startsWith("cmd_info_") || id.startsWith("staff_cmd_") || id.startsWith("admin_cmd_");
             if (!isOurs) return;
 
@@ -64,6 +80,22 @@ bot1.on("interactionCreate", async (interaction) => {
                 });
             } catch (editErr) {
                 console.warn("⚠️ [Bot1] Could not refresh menu:", editErr.message);
+            }
+        } else if (interaction.isButton()) {
+            const id = interaction.customId;
+            if (id === 'todo_update') {
+                if (!interaction.member.permissions.has("Administrator")) {
+                    return interaction.reply({ content: "❌ You need administrator permissions to update the list.", ephemeral: true });
+                }
+                const { getTodos, getTodoListEmbed, getTodoComponents } = require('./todoManager.js');
+                const todos = getTodos();
+                if (todos.length === 0) {
+                    return interaction.reply({ content: "✨ There are no pending tasks to complete!", ephemeral: true });
+                }
+
+                await interaction.update({
+                    components: getTodoComponents(true)
+                });
             }
         }
     } catch (err) {

@@ -4,7 +4,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const { buildInviteEmbed, createRefreshButton } = require('./bot2_utils.js');
 
-const BOT2_TOKEN     = process.env.BOT2_TOKEN;
+const BOT2_TOKEN     = process.env.BOT2_TOKEN || process.env.DISCORD_TOKEN;
 const BOT2_CLIENT_ID = "1514551450867466320";
 
 const bot2 = new Client({
