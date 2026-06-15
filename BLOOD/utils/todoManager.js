@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
+const { getEmoji, emojis } = require('./botemoji.js');
 
-const TODO_FILE = path.join(__dirname, 'todo.json');
+const TODO_FILE = path.join(__dirname, '../data/todo.json');
 
 function getTodos() {
     try {
@@ -49,11 +50,11 @@ function getTodoListEmbed() {
     const todos = getTodos();
     const embed = new EmbedBuilder()
         .setColor('#e74c3c')
-        .setTitle('🩸 Blood Alliance — Active To-Do List')
+        .setTitle(`${getEmoji("blood")} Blood Alliance — Active To-Do List`)
         .setTimestamp();
 
     if (todos.length === 0) {
-        embed.setDescription('✨ **All clear! No pending tasks.**\nUse `/todo` to add new tasks.');
+        embed.setDescription(`${getEmoji("bluestar")} **All clear! No pending tasks.**\nUse \`/todo\` to add new tasks.`);
     } else {
         const description = todos.map((t, idx) => {
             const date = new Date(t.createdAt);
@@ -77,7 +78,7 @@ function getTodoComponents(showDropdown = false) {
             .setCustomId('todo_update')
             .setLabel('Update List')
             .setStyle(ButtonStyle.Primary)
-            .setEmoji('🔄')
+            .setEmoji(emojis.refresh || '🔄')
     );
     components.push(buttonRow);
 

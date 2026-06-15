@@ -1,5 +1,6 @@
-const { SlashCommandBuilder } = require('discord.js');
-const { addTodo } = require('../todoManager.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { addTodo } = require('../../utils/todoManager.js');
+const { getEmoji } = require('../../utils/botemoji.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -32,17 +33,22 @@ module.exports = {
 
         try {
             const targetUser = await interaction.client.users.fetch(targetUserId);
-            await targetUser.send({
-                content: `new update came for your bot please check it by using /todo-list in server`
-            });
+            
+            const dmEmbed = new EmbedBuilder()
+                .setColor('#e74c3c')
+                .setTitle(`${getEmoji("alaram")} Bot Update Notification`)
+                .setDescription('new update came for your bot please check it by using /todo-list in server')
+                .setTimestamp();
+
+            await targetUser.send({ embeds: [dmEmbed] });
             dmStatus = ` (Notified <@${targetUserId}> via DM)`;
         } catch (dmErr) {
-            console.error(`❌ Failed to send DM to ${targetUserId}:`, dmErr.message);
-            dmStatus = ` (⚠️ Could not send DM notification to <@${targetUserId}>)`;
+            console.error(`${getEmoji("bluex")} Failed to send DM to ${targetUserId}:`, dmErr.message);
+            dmStatus = ` (${getEmoji("alaram")} Could not send DM notification to <@${targetUserId}>)`;
         }
 
         return interaction.reply({
-            content: `✅ Task added to the todo list for **${botTarget}**: **${newTodo.task}**${dmStatus}`,
+            content: `${getEmoji("gtick")} Task added to the todo list for **${botTarget}**: **${newTodo.task}**${dmStatus}`,
             ephemeral: false
         });
     }

@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-const { getDetailEmbed, getBannerFiles } = require('./data.js');
+const { getDetailEmbed, getBannerFiles } = require('./utils/data.js');
 
 const BOT1_TOKEN     = process.env.BOT1_TOKEN || process.env.DISCORD_TOKEN;
 const BOT1_CLIENT_ID = "1509906435402760202";
@@ -13,15 +13,28 @@ const bot1 = new Client({
 
 bot1.commands = new Collection();
 const commandsPath = path.join(__dirname, 'bot1_commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
 const commandsData = [];
-for (const file of commandFiles) {
-    const command = require(path.join(commandsPath, file));
-    bot1.commands.set(command.data.name, command);
-    if(command.data.toJSON) commandsData.push(command.data.toJSON());
-    else commandsData.push(command.data);
+
+function loadCommands(dir) {
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+        const fullPath = path.join(dir, file);
+        const stat = fs.statSync(fullPath);
+        if (stat.isDirectory()) {
+            loadCommands(fullPath);
+        } else if (file.endsWith('.js')) {
+            const command = require(fullPath);
+            bot1.commands.set(command.data.name, command);
+            if (command.data.toJSON) {
+                commandsData.push(command.data.toJSON());
+            } else {
+                commandsData.push(command.data);
+            }
+        }
+    }
 }
+
+loadCommands(commandsPath);
 
 let bot1CommandsRegistered = false;
 
@@ -52,7 +65,7 @@ bot1.on("interactionCreate", async (interaction) => {
                 if (!interaction.member.permissions.has("Administrator")) {
                     return interaction.reply({ content: "❌ You need administrator permissions to complete tasks.", ephemeral: true });
                 }
-                const { removeTodo, getTodoListEmbed, getTodoComponents } = require('./todoManager.js');
+                const { removeTodo, getTodoListEmbed, getTodoComponents } = require('./utils/todoManager.js');
                 const selectedId = interaction.values[0];
                 removeTodo(selectedId);
 
@@ -87,7 +100,7 @@ bot1.on("interactionCreate", async (interaction) => {
                 if (!interaction.member.permissions.has("Administrator")) {
                     return interaction.reply({ content: "❌ You need administrator permissions to update the list.", ephemeral: true });
                 }
-                const { getTodos, getTodoListEmbed, getTodoComponents } = require('./todoManager.js');
+                const { getTodos, getTodoListEmbed, getTodoComponents } = require('./utils/todoManager.js');
                 const todos = getTodos();
                 if (todos.length === 0) {
                     return interaction.reply({ content: "✨ There are no pending tasks to complete!", ephemeral: true });

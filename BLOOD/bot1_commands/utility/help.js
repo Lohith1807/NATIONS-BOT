@@ -1,5 +1,27 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { getHelpData, saveHelpData, isStaffOrAdmin } = require('../data.js');
+const { getHelpData, saveHelpData, isStaffOrAdmin } = require('../../utils/data.js');
+const { getEmoji } = require('../../utils/botemoji.js');
+
+function formatHelpText(text) {
+    if (!text) return "";
+    return text
+        .replace(/🔹|⚪|•/g, getEmoji("pinkdot"))
+        .replace(/arrow|->|=>|➡️|👉|▶️/g, getEmoji("arrow"))
+        .replace(/✅|🟢/g, getEmoji("gtick"))
+        .replace(/❌|🚫|👢/g, getEmoji("bluex"))
+        .replace(/⚠️|⚙️|🔇|🔔|📣|📢/g, getEmoji("alaram"))
+        .replace(/🛡️|🔒/g, getEmoji("sheild"))
+        .replace(/🏆/g, getEmoji("cwl"))
+        .replace(/🏯/g, getEmoji("clancastle"))
+        .replace(/⚔️/g, getEmoji("cocfight"))
+        .replace(/👤|🧑/g, getEmoji("mem"))
+        .replace(/🩸/g, getEmoji("blood"))
+        .replace(/❤️/g, getEmoji("heart"))
+        .replace(/📖|📚|📋|🗂️|🔍|📄|🏷️|🔢|🎫|🟫/g, getEmoji("book"))
+        .replace(/🔗/g, getEmoji("chain"))
+        .replace(/🔄|♻️/g, getEmoji("refresh"))
+        .replace(/⚖️|🏋️|📊/g, getEmoji("graph"));
+}
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -77,32 +99,36 @@ module.exports = {
 
             if (commandName === 'webpage') {
                 const data = helpData.webpage;
-                if (!data) return interaction.reply({ content: "❌ Webpage help data missing.", ephemeral: true });
+                if (!data) return interaction.reply({ content: `${getEmoji("bluex")} Webpage help data missing.`, ephemeral: true });
                 
-                const fields = data.fields.map(f => ({
-                    name: f.name,
-                    value: `${f.value}\n${f.permission || "Staff"}`
-                }));
+                const dotEmoji = getEmoji("pinkdot");
+                
+                const commandsList = data.fields.map(f => {
+                    const cleanName = f.name.replace(/🔹|⚪|•/g, '').trim();
+                    const cleanVal = f.value.replace(/🔹|⚪|•|🟫/g, '').replace(/arrow|->|=>/g, '→').trim();
+                    return `${dotEmoji} **\`/${cleanName}\`**\n└ ${cleanVal} (\`${f.permission || "Staff"}\`)`;
+                }).join('\n\n');
 
-                embed.setTitle(data.title)
-                    .setDescription(data.description)
-                    .addFields(fields)
+                embed.setTitle(formatHelpText(data.title))
+                    .setDescription(`${formatHelpText(data.description)}\n\n${commandsList}`)
                     .setFooter({ text: 'Webpage Management' });
                 return interaction.reply({ embeds: [embed] });
             }
 
             if (commandName === 'strike') {
                 const data = helpData.strike;
-                if (!data) return interaction.reply({ content: "❌ Strike help data missing.", ephemeral: true });
+                if (!data) return interaction.reply({ content: `${getEmoji("bluex")} Strike help data missing.`, ephemeral: true });
                 
-                const sections = data.sections.map(s => ({
-                    name: s.name,
-                    value: `${s.value}\n${s.permission || "Mixed"}`
-                }));
+                const dotEmoji = getEmoji("pinkdot");
 
-                embed.setTitle(data.title)
-                    .setDescription(data.description)
-                    .addFields(sections)
+                const sectionsList = data.sections.map(s => {
+                    const cleanName = s.name.replace(/🔹|⚪|•/g, '').trim();
+                    const cleanVal = s.value.replace(/🔹|⚪|•|🟫/g, '').replace(/arrow|->|=>/g, '→').trim();
+                    return `${dotEmoji} **${cleanName}**\n└ ${cleanVal} (\`${s.permission || "Mixed"}\`)`;
+                }).join('\n\n');
+
+                embed.setTitle(formatHelpText(data.title))
+                    .setDescription(`${formatHelpText(data.description)}\n\n${sectionsList}`)
                     .setColor(0xFF0000)
                     .setFooter({ text: 'Strike System' });
                 return interaction.reply({ embeds: [embed] });
@@ -110,23 +136,25 @@ module.exports = {
 
             const cmd = helpData.commands ? helpData.commands[commandName] : null;
             if (cmd) {
-                embed.setTitle(`📖 Help: ${commandName}`)
-                    .addFields(
-                        { name: '🔹 Command Name', value: `\`${commandName}\``, inline: true },
-                        { name: '🟫 Syntax', value: `\`${cmd.syntax}\``, inline: true },
-                        { name: '👤 Permission', value: cmd.permission || "Everyone", inline: true },
-                        { name: '⚪ Use', value: cmd.use }
+                const titleEmoji = getEmoji("book");
+                const dotEmoji = getEmoji("pinkdot");
+
+                embed.setTitle(`${titleEmoji} Command: \`/${commandName}\``)
+                    .setDescription(
+                        `${dotEmoji} **Description:** ${formatHelpText(cmd.use)}\n` +
+                        `${dotEmoji} **Syntax:** \`${cmd.syntax}\`\n` +
+                        `${dotEmoji} **Permission:** \`${cmd.permission || "Everyone"}\``
                     );
                 return interaction.reply({ embeds: [embed] });
             }
 
-            return interaction.reply({ content: `❌ Command \`${commandName}\` not found.`, ephemeral: true });
+            return interaction.reply({ content: `${getEmoji("bluex")} Command \`${commandName}\` not found.`, ephemeral: true });
         }
 
         // --- SUBCOMMAND: ADD ---
         if (subcommand === 'add') {
             if (!isStaffOrAdmin(interaction.member)) {
-                return interaction.reply({ content: "❌ You do not have permission to manage help records.", ephemeral: true });
+                return interaction.reply({ content: `${getEmoji("bluex")} You do not have permission to manage help records.`, ephemeral: true });
             }
 
             const commandName = interaction.options.getString('command').toLowerCase();
@@ -140,18 +168,18 @@ module.exports = {
             try {
                 saveHelpData(helpData);
                 const embed = new EmbedBuilder()
-                    .setTitle("✅ Help Record Updated")
+                    .setTitle(`${getEmoji("gtick")} Help Record Updated`)
                     .setColor(0x2ECC71)
-                    .addFields(
-                        { name: "🔹 Command", value: `\`${commandName}\``, inline: true },
-                        { name: "🟫 Syntax", value: `\`${syntax}\``, inline: true },
-                        { name: "👤 Permission", value: permission, inline: true },
-                        { name: "⚪ Use", value: use }
+                    .setDescription(
+                        `${getEmoji("pinkdot")} **Command:** \`${commandName}\`\n` +
+                        `${getEmoji("pinkdot")} **Syntax:** \`${syntax}\`\n` +
+                        `${getEmoji("pinkdot")} **Permission:** \`${permission}\`\n` +
+                        `${getEmoji("pinkdot")} **Description:** ${use}`
                     )
                     .setTimestamp();
                 return interaction.reply({ embeds: [embed] });
             } catch (err) {
-                return interaction.reply({ content: "❌ Failed to save help data.", ephemeral: true });
+                return interaction.reply({ content: `${getEmoji("bluex")} Failed to save help data.`, ephemeral: true });
             }
         }
     }

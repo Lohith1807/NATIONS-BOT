@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const { getTodoListEmbed, getTodoComponents } = require('../todoManager.js');
-const { getBannerFiles } = require('../data.js');
+const { getTodoListEmbed, getTodoComponents } = require('../../utils/todoManager.js');
+const { getBannerFiles } = require('../../utils/data.js');
+const { getEmoji } = require('../../utils/botemoji.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -10,7 +11,7 @@ module.exports = {
     async execute(interaction) {
         if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({
-                content: "❌ You need **Administrator** permissions to use this command.",
+                content: `${getEmoji("bluex")} You need **Administrator** permissions to use this command.`,
                 ephemeral: true,
             });
         }
