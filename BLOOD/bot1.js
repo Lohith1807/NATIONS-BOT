@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-const { getDetailEmbed, getBannerFiles } = require('./utils/data.js');
+const { getBannerFiles } = require('./utils/data.js');
 
 const BOT1_TOKEN     = process.env.BOT1_TOKEN || process.env.DISCORD_TOKEN;
 const BOT1_CLIENT_ID = "1509906435402760202";
@@ -76,24 +76,7 @@ bot1.on("interactionCreate", async (interaction) => {
                 return;
             }
 
-            const isOurs = id.startsWith("cmd_info_") || id.startsWith("staff_cmd_") || id.startsWith("admin_cmd_");
-            if (!isOurs) return;
 
-            const selected = interaction.values[0];
-            await interaction.reply({
-                embeds: [getDetailEmbed(selected)],
-                files: getBannerFiles(),
-                ephemeral: true,
-            });
-
-            try {
-                await interaction.message.edit({
-                    embeds: interaction.message.embeds,
-                    components: interaction.message.components,
-                });
-            } catch (editErr) {
-                console.warn("⚠️ [Bot1] Could not refresh menu:", editErr.message);
-            }
         } else if (interaction.isButton()) {
             const id = interaction.customId;
             if (id === 'todo_update') {
@@ -108,6 +91,19 @@ bot1.on("interactionCreate", async (interaction) => {
 
                 await interaction.update({
                     components: getTodoComponents(true)
+                });
+            } else if (id.startsWith('help_page_')) {
+                const page = id.replace('help_page_', '');
+                if (page === 'staff' || page === 'admin') {
+                    const { isStaffOrAdmin } = require('./utils/data.js');
+                    if (!isStaffOrAdmin(interaction.member)) {
+                        return interaction.reply({ content: "❌ You need Staff or Admin permissions to view this tab.", ephemeral: true });
+                    }
+                }
+                const { getCategoryHelpEmbed, createCategoryButtons } = require('./utils/data.js');
+                await interaction.update({
+                    embeds: [getCategoryHelpEmbed(page)],
+                    components: [createCategoryButtons()]
                 });
             }
         }
