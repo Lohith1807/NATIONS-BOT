@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
@@ -8,7 +8,12 @@ const BOT1_TOKEN     = process.env.BOT1_TOKEN || process.env.DISCORD_TOKEN;
 const BOT1_CLIENT_ID = "1509906435402760202";
 
 const bot1 = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.DirectMessages,
+    ],
+    partials: ['CHANNEL'], // Required for receiving DMs
 });
 
 bot1.commands = new Collection();
@@ -36,51 +41,80 @@ function loadCommands(dir) {
 
 loadCommands(commandsPath);
 
-let bot1CommandsRegistered = false;
-
 bot1.once("ready", async () => {
     console.log(`✅ [Bot1] ${bot1.user.tag} is online`);
-    if (bot1CommandsRegistered) return;
-    bot1CommandsRegistered = true;
-
-    const rest = new REST({ version: "10" }).setToken(BOT1_TOKEN);
-    try {
-        await rest.put(Routes.applicationCommands(BOT1_CLIENT_ID), { body: commandsData });
-        console.log("✅ [Bot1] Slash commands registered.");
-    } catch (err) {
-        console.error("❌ [Bot1] Failed to register commands:", err);
-    }
+    
+    const { checkReminders } = require('./utils/reminderManager.js');
+    setInterval(() => checkReminders(bot1), 10000);
 });
 
 bot1.on("interactionCreate", async (interaction) => {
     try {
+        const { handleReminderInteractions } = require('./utils/reminderInteractions.js');
+        if (await handleReminderInteractions(interaction)) return;
+
         if (interaction.isChatInputCommand()) {
             const command = bot1.commands.get(interaction.commandName);
             if (!command) return;
             await command.execute(interaction);
+        } else if (interaction.isAutocomplete()) {
+            const command = bot1.commands.get(interaction.commandName);
+            if (command && command.autocomplete) {
+                await command.autocomplete(interaction);
+            }
         } else if (interaction.isStringSelectMenu()) {
             const id = interaction.customId;
 
             if (id === 'todo_select') {
-                if (!interaction.member.permissions.has("Administrator")) {
+                if (!interaction.member || !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                     return interaction.reply({ content: "❌ You need administrator permissions to complete tasks.", ephemeral: true });
                 }
-                const { removeTodo, getTodoListEmbed, getTodoComponents } = require('./utils/todoManager.js');
+                const { getTodos, removeTodo, getTodoListEmbed, getTodoComponents } = require('./utils/todoManager.js');
+                const { EmbedBuilder } = require('discord.js');
+                const { getEmoji } = require('./utils/botemoji.js');
                 const selectedId = interaction.values[0];
+
+                // Grab the todo BEFORE removing so we can DM the creator
+                const todo = getTodos().find(t => t.id === selectedId);
                 removeTodo(selectedId);
 
                 await interaction.update({
                     embeds: [getTodoListEmbed()],
                     components: getTodoComponents(false)
                 });
+
+                // DM the creator
+                if (todo && todo.userId) {
+                    try {
+                        const creator = await bot1.users.fetch(todo.userId);
+                        const dmEmbed = new EmbedBuilder()
+                            .setColor(0x2ECC71)
+                            .setTitle(`${getEmoji('gtick')} To-Do Completed!`)
+                            .setDescription(`${getEmoji('yarrow')} **${todo.task}**`)
+                            .addFields({ name: 'Marked complete by', value: `<@${interaction.user.id}>` })
+                            .setTimestamp()
+                            .setFooter({ text: 'Blood Alliance' });
+                        await creator.send({ embeds: [dmEmbed] });
+                    } catch (_) {}
+                }
                 return;
             }
 
+            if (id.startsWith('cmd_info_') || id.startsWith('staff_cmd_') || id.startsWith('admin_cmd_')) {
+                const { getDetailEmbed, getBannerFiles } = require('./utils/data.js');
+                const selectedCmd = interaction.values[0];
+                await interaction.reply({
+                    embeds: [getDetailEmbed(selectedCmd)],
+                    files: getBannerFiles(),
+                    ephemeral: true
+                });
+                return;
+            }
 
         } else if (interaction.isButton()) {
             const id = interaction.customId;
             if (id === 'todo_update') {
-                if (!interaction.member.permissions.has("Administrator")) {
+                if (!interaction.member || !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                     return interaction.reply({ content: "❌ You need administrator permissions to update the list.", ephemeral: true });
                 }
                 const { getTodos, getTodoListEmbed, getTodoComponents } = require('./utils/todoManager.js');
@@ -96,7 +130,7 @@ bot1.on("interactionCreate", async (interaction) => {
                 const page = id.replace('help_page_', '');
                 if (page === 'staff' || page === 'admin') {
                     const { isStaffOrAdmin } = require('./utils/data.js');
-                    if (!isStaffOrAdmin(interaction.member)) {
+                    if (!interaction.member || !isStaffOrAdmin(interaction.member)) {
                         return interaction.reply({ content: "❌ You need Staff or Admin permissions to view this tab.", ephemeral: true });
                     }
                 }

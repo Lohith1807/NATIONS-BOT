@@ -9,7 +9,9 @@ function getTodos() {
     try {
         if (!fs.existsSync(TODO_FILE)) return [];
         const raw = fs.readFileSync(TODO_FILE, 'utf8');
-        return raw ? JSON.parse(raw) : [];
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
     } catch (err) {
         console.error('Error reading todo.json:', err);
         return [];

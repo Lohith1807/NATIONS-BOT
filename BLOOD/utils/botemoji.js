@@ -47,7 +47,8 @@ const emojis = {
   "rarroww": "1516090007914287237",
   "yarrow": "1516090009596198963",
   "chain": "1516090011622182932",
-  "refresh": "1516090022774837328"
+  "refresh": "1516090022774837328",
+  "delete": "1516659289119391764"
 };
 
 // Set of animated emoji names to determine <a:name:id> formatting
