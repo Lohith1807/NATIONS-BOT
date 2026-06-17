@@ -6,7 +6,7 @@ const {
     ButtonStyle
 } = require('discord.js');
 const { getUserReminders } = require('../../utils/reminderManager.js');
-const { getEmoji, getEmojiObject } = require('../../utils/botemoji.js');
+const { getEmoji } = require('../../utils/botemoji.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -28,7 +28,7 @@ module.exports = {
             .setColor(0x5865F2)
             .setDescription(
                 reminders.map((r, i) =>
-                    `${getEmoji('arrow')} **${i + 1}.** <t:${Math.floor(Number(r.timestamp) / 1000)}:R>\n${getEmoji('rarrow')} ${r.message}`
+                    `${getEmoji('arrow')} **${i + 1}.** <t:${Math.floor(Number(r.timestamp) / 1000)}:R>\n${getEmoji('yarrow')} ${r.message}`
                 ).join('\n\n')
             )
             .setFooter({ text: 'Use the buttons below to edit or delete reminders' });
@@ -36,14 +36,12 @@ module.exports = {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('rem_edit_btn')
-                .setLabel('Edit')
-                .setStyle(ButtonStyle.Primary)
-                .setEmoji(getEmojiObject('refresh')),
+                .setLabel('✏️ Edit')
+                .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
                 .setCustomId('rem_delete_btn')
-                .setLabel('Delete')
+                .setLabel('🗑️ Delete')
                 .setStyle(ButtonStyle.Danger)
-                .setEmoji(getEmojiObject('delete'))
         );
 
         await interaction.reply({
