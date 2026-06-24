@@ -24,7 +24,7 @@ const emojis = {
   "th13": "1516089951865933885",
   "th12": "1516089954256814110",
   "th11": "1516089956471148686",
-  "mem": "1516089959000444970",
+  "mem": "1517183824067297330",
   "wow": "1516089962431250473",
   "drop": "1516089964398379159",
   "rarrow": "1516089966307049494",
@@ -48,7 +48,12 @@ const emojis = {
   "yarrow": "1516090009596198963",
   "chain": "1516090011622182932",
   "refresh": "1516090022774837328",
-  "delete": "1516659289119391764"
+  "delete": "1516659289119391764",
+  "thunder":"1517183845227827420",
+  "gift":"1517183839062069289",
+  "no1":"1517183835446579452",
+  "dart":"1517183826810507355",
+  "redcrown":"1517183820430835842"
 };
 
 // Set of animated emoji names to determine <a:name:id> formatting
@@ -76,7 +81,12 @@ const animatedEmojis = new Set([
   "bluedot",
   "rarroww",
   "yarrow",
-  "chain"
+  "chain",
+  "thunder",
+  "gift",
+  "no1",
+  "dart",
+  "redcrown",
 ]);
 
 const getEmoji = (name) => {
@@ -97,8 +107,185 @@ const getEmojiObject = (name) => {
   };
 };
 
+const emojiMap = {
+  // Pointers & Arrows
+  "➡️": "arrow", "👉": "arrow", "▶️": "arrow", "➔": "arrow", "➜": "arrow", "➤": "arrow", "➡": "arrow", "🔺": "arrow",
+  "🔸": "arrow", "🔷": "arrow", "🔹": "arrow", "🔼": "arrow", "🔽": "arrow", "⏫": "arrow", "⏬": "arrow",
+  "arrow": "arrow", "parrow": "parrow", "yarrow": "yarrow", "rarroww": "rarroww",
+  "uparrow": "uparrow", "downarrow": "downarrow",
+
+  // Success & Ticks
+  "✅": "gtick", "🟢": "gtick", "✔️": "gtick", "☑️": "gtick", "👍": "gtick", "👌": "gtick",                                                                                                                                                                                                                                                                                                     
+  "gtick": "gtick",
+
+  // Failures & Crosses
+  "❌": "bluex", "🔴": "bluex", "🚫": "bluex", "🗑️": "bluex", "👎": "bluex", "🛑": "bluex", "💀": "bluex",
+  "bluex": "bluex", "tickred": "tickred",
+
+  // Alarms, Alerts & Bells
+  "⚠️": "alaram", "⚙️": "alaram", "🔇": "alaram", "🔔": "alaram", "📣": "alaram", "📢": "alaram", "🚨": "alaram", "⏰": "alaram", "⏳": "alaram",
+  "alaram": "alaram",
+
+  // Shields, Strength & Defense
+  "🛡️": "sheild", "🔒": "sheild", "🔑": "sheild", "🔐": "sheild", "💪": "sheild", "🏋️": "sheild", "⛓️": "sheild",
+  "sheild": "sheild",
+
+  // Trophies, Medals & Place Winners
+  "🏆": "no1", "🎖️": "cwl", "🥇": "cwl", "🥈": "throphy", "🥉": "throphy", "🏅": "throphy", "👑": "crown",
+  "crown": "crown", "cwl": "cwl", "throphy": "throphy",
+  "no1": "no1", "redcrown": "redcrown",
+
+  // Castles, Houses & Bases
+  "🏯": "clancastle", "🏰": "clancastle", "🏠": "clancastle", "🏡": "clancastle",
+  "clancastle": "clancastle",
+
+  // Fights, Combat & War
+  "⚔️": "cocfight", "⚔": "cocfight", "🗡️": "cocfight", "🗡": "cocfight", "🔫": "cocfight", "🏹": "cocfight", "💣": "cocfight",
+  "cocfight": "cocfight",
+
+  // Members & People
+  "👤": "mem", "🧑": "mem", "👥": "mem", "👨": "mem", "👩": "mem",
+  "mem": "mem",
+
+  // Liquids, Water, Elixirs & Blood
+  "🩸": "blood", "🧪": "drop", "🌊": "drop", "💧": "drop", "💦": "drop", "🥤": "drop",
+  "blood": "blood", "drop": "drop",
+
+  // Hearts, Love & Fire
+  "❤️": "heart", "💖": "heart", "💝": "heart", "💕": "heart", "🔥": "heart", "💥": "heart",
+  "heart": "heart",
+
+  // Books, Writing & Sparkles
+  "📖": "book", "📚": "book", "📋": "book", "🗂️": "book", "🔍": "book", "📄": "book", "🏷️": "book", "📝": "book",
+  "✨": "bluestar", "⭐": "bluestar", "🌟": "bluestar", "💫": "bluestar", "🎯": "dart",
+  "book": "book", "bluestar": "bluestar", "dart": "dart",
+
+  // Chains & Links
+  "🔗": "chain", "🖇️": "chain",
+  "chain": "chain",
+
+  // Refresh & Settings
+  "🔄": "refresh", "♻️": "refresh", "🔃": "refresh", "⚙️": "refresh",
+  "refresh": "refresh",
+
+  // Graphs, Scales & Measurements
+  "⚖️": "graph", "🏋️": "graph", "📊": "graph", "📈": "graph", "⚡": "thunder",
+  "graph": "graph", "thunder": "thunder",
+
+  // Gifts, Presents & Celebration
+  "🎁": "gift", "🎉": "gift", "🎊": "gift", "🎈": "gift", "🎂": "gift", "🌳": "cyandot",
+  "gift": "gift", "wow": "wow"
+};
+
+const findCustomEmoji = (name) => {
+  const lowerName = name.toLowerCase();
+  
+  if (emojiMap[lowerName]) return emojiMap[lowerName];
+  if (emojis[lowerName]) return lowerName;
+  
+  // Fuzzy substring matching
+  for (const key of Object.keys(emojis)) {
+    if (lowerName.includes(key) || key.includes(lowerName)) {
+      return key;
+    }
+  }
+  
+  // Fallback to a random high-quality general custom emoji key
+  const generalKeys = [
+    "arrow", "parrow", "yarrow", "rarroww", "pinkdot", "orangedot", "cyandot", "bluedot", 
+    "heart", "alaram", "bluestar", "wow", "crown", "redcrown", "thunder", "gift", "dart"
+  ];
+  return generalKeys[Math.floor(Math.random() * generalKeys.length)];
+};
+
+const prettifyText = (text) => {
+  if (!text) return text;
+  
+  // 1. Remove excess blank lines (max 2 consecutive newlines)
+  let cleanText = text.replace(/\n{3,}/g, '\n\n').trim();
+
+  // 2. Prettify headers & lists line by line
+  let lines = cleanText.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim();
+    if (!line) continue;
+
+    // Auto-bold key headings that end with a colon (e.g. "How it Works:") if they aren't already bold
+    if (line.endsWith(':') && !line.startsWith('**') && !line.startsWith('__')) {
+      // Find if there is an emoji at the start
+      const emojiPrefixMatch = line.match(/^(\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji}\uFE0F|<a?:\w+:\d+>)\s*(.*)/u);
+      if (emojiPrefixMatch) {
+        const emoji = emojiPrefixMatch[1];
+        const heading = emojiPrefixMatch[2];
+        lines[i] = `${emoji} **${heading}**`;
+      } else {
+        lines[i] = `**${line}**`;
+      }
+    }
+
+    // Auto-adjust spaces between emojis and text (ensure exactly one space after a leading emoji)
+    lines[i] = lines[i].replace(/^(\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji}\uFE0F|<a?:\w+:\d+>)\s*(?=\S)/u, '$1 ');
+    
+    // Auto-adjust spaces around trailing emojis at the end of headings/lines
+    lines[i] = lines[i].replace(/\s+(\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji}\uFE0F|<a?:\w+:\d+>)$/u, ' $1');
+  }
+
+  return lines.join('\n');
+};
+
+const processEmojis = (text) => {
+  if (!text) return text;
+
+  // 1. Process custom Discord emojis: <:name:id> or <a:name:id>
+  let processed = text.replace(/<a?:(\w+):\d+>/g, (match, name) => {
+    const mappedName = findCustomEmoji(name);
+    return getEmoji(mappedName);
+  });
+
+  // 2. Process custom shortcodes: :name:
+  processed = processed.replace(/:(\w+):/g, (match, name) => {
+    const mappedName = findCustomEmoji(name);
+    return getEmoji(mappedName);
+  });
+
+  // 3. Process Unicode emojis
+  const unicodeEmojiRegex = /\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji}\uFE0F/gu;
+  processed = processed.replace(unicodeEmojiRegex, (match) => {
+    const cleanMatch = match.replace(/\uFE0F/g, '');
+    const mappedName = emojiMap[cleanMatch] || emojiMap[match];
+    if (mappedName) {
+      return getEmoji(mappedName);
+    }
+    
+    // If not explicitly mapped, fallback to a random animated bot emoji
+    const generalKeys = [
+      "arrow", "parrow", "yarrow", "rarroww", "pinkdot", "orangedot", "cyandot", "bluedot", 
+      "heart", "alaram", "bluestar", "wow", "crown", "redcrown", "thunder", "gift", "dart"
+    ];
+    const randKey = generalKeys[Math.floor(Math.random() * generalKeys.length)];
+    return getEmoji(randKey);
+  });
+
+  // 4. Prettify layout and auto-adjust spacing/formatting
+  processed = prettifyText(processed);
+
+  return processed;
+};
+
+const revertEmojis = (text) => {
+  if (!text) return text;
+  return text.replace(/<a?:(\w+):\d+>/g, (match, name) => {
+    if (emojis[name]) {
+      return `:${name}:`;
+    }
+    return match;
+  });
+};
+
 module.exports = {
   emojis,
   getEmoji,
-  getEmojiObject
+  getEmojiObject,
+  processEmojis,
+  revertEmojis
 };
