@@ -307,3 +307,6 @@ client.login(DISCORD_TOKEN);
 
 // Run the other two bots inside BLOOD directory
 require("./BLOOD/index.js");
+
+// Run the counting bot
+require("./BA_COUNT/index.js");

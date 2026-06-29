@@ -48,12 +48,12 @@ bot1.once("ready", async () => {
     const { checkReminders } = require('./utils/reminderManager.js');
     setInterval(() => checkReminders(bot1), 10000);
 
-    // Scheduled DM for TAU Token Update (8 AM IST, next 6 days)
+    // Scheduled DM for TAU Token Update (8 AM IST, every 6 days)
     try {
         const cron = require('node-cron');
         const { EmbedBuilder } = require('discord.js');
         
-        cron.schedule('0 8 * * *', async () => {
+        cron.schedule('0 8 */6 * *', async () => {
             const endDate = new Date('2026-06-30T00:00:00+05:30');
             if (new Date() > endDate) return;
 
@@ -99,12 +99,13 @@ bot1.on("interactionCreate", async (interaction) => {
         } else if (interaction.isModalSubmit()) {
             const id = interaction.customId;
             if (id.startsWith('make_announcement_modal:')) {
+                await interaction.deferReply({ ephemeral: true });
                 const parts = id.split(':');
                 const channelId = parts[1];
                 const isEmbed = parts[2] === 'true';
                 const channel = interaction.guild.channels.cache.get(channelId);
                 if (!channel) {
-                    return interaction.reply({ content: "❌ Target channel not found.", ephemeral: true });
+                    return interaction.editReply({ content: "❌ Target channel not found." });
                 }
                 const text = interaction.fields.getTextInputValue('announcement_text');
                 
@@ -139,34 +140,34 @@ bot1.on("interactionCreate", async (interaction) => {
                     }
 
                     const sentMessage = await channel.send(messagePayload);
-                    await interaction.reply({
-                        content: `${getEmoji('gtick')} Announcement sent successfully to ${channel}!\n**Message ID:** \`${sentMessage.id}\``,
-                        ephemeral: true
+                    await interaction.editReply({
+                        content: `${getEmoji('gtick')} Announcement sent successfully to ${channel}!\n**Message ID:** \`${sentMessage.id}\``
                     });
                 } catch (err) {
                     console.error("Failed to send announcement:", err);
-                    await interaction.reply({ content: `❌ Failed to send announcement: ${err.message}`, ephemeral: true });
+                    await interaction.editReply({ content: `❌ Failed to send announcement: ${err.message}` });
                 }
                 return;
             }
 
             if (id.startsWith('edit_announcement_modal:')) {
+                await interaction.deferReply({ ephemeral: true });
                 const parts = id.split(':');
                 const channelId = parts[1];
                 const messageId = parts[2];
                 const isEmbed = parts[3] === 'true';
                 const channel = interaction.guild.channels.cache.get(channelId);
                 if (!channel) {
-                    return interaction.reply({ content: "❌ Target channel not found.", ephemeral: true });
+                    return interaction.editReply({ content: "❌ Target channel not found." });
                 }
                 
                 try {
                     const targetMessage = await channel.messages.fetch(messageId);
                     if (!targetMessage) {
-                        return interaction.reply({ content: "❌ Announcement message not found.", ephemeral: true });
+                        return interaction.editReply({ content: "❌ Announcement message not found." });
                     }
                     if (targetMessage.author.id !== interaction.client.user.id) {
-                        return interaction.reply({ content: "❌ I cannot edit a message not sent by me.", ephemeral: true });
+                        return interaction.editReply({ content: "❌ I cannot edit a message not sent by me." });
                     }
                     
                     const text = interaction.fields.getTextInputValue('announcement_text');
@@ -199,13 +200,12 @@ bot1.on("interactionCreate", async (interaction) => {
                     }
 
                     await targetMessage.edit(messagePayload);
-                    await interaction.reply({
-                        content: `${getEmoji('gtick')} Announcement edited successfully!`,
-                        ephemeral: true
+                    await interaction.editReply({
+                        content: `${getEmoji('gtick')} Announcement edited successfully!`
                     });
                 } catch (err) {
                     console.error("Failed to edit announcement:", err);
-                    await interaction.reply({ content: `❌ Failed to edit announcement: ${err.message}`, ephemeral: true });
+                    await interaction.editReply({ content: `❌ Failed to edit announcement: ${err.message}` });
                 }
                 return;
             }
