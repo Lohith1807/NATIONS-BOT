@@ -30,17 +30,52 @@ client.on(Events.MessageCreate, async (message) => {
     await messageCreateEvent.execute(message, client);
 });
 
-// Handle Slash Commands
+// Handle Interactions
 client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-    const command = client.commands.get(interaction.commandName);
-    if (!command) return;
-    try {
-        await command.execute(interaction);
-    } catch (error) {
-        console.error(error);
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true }).catch(() => {});
+    if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
+        try {
+            await command.execute(interaction);
+        } catch (error) {
+            console.error(error);
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true }).catch(() => {});
+            }
+        }
+    } else if (interaction.isModalSubmit()) {
+        if (interaction.customId === 'createCountingRoleModal') {
+            const roleName = interaction.fields.getTextInputValue('roleNameInput');
+            const countStr = interaction.fields.getTextInputValue('countInput');
+            const count = parseInt(countStr, 10);
+            
+            if (isNaN(count)) {
+                return interaction.reply({ content: 'Count must be a valid number.', ephemeral: true });
+            }
+            
+            const guildId = interaction.guildId;
+            const { getServers, saveServers } = require('./utils/dataManager');
+            let servers = getServers();
+            
+            if (!servers[guildId]) {
+                return interaction.reply({ content: 'Counting has not been set up yet!', ephemeral: true });
+            }
+            if (!servers[guildId].roles) {
+                const { DEFAULT_ROLES } = require('./events/messageCreate');
+                servers[guildId].roles = JSON.parse(JSON.stringify(DEFAULT_ROLES));
+            }
+            
+            const existingIndex = servers[guildId].roles.findIndex(r => r.threshold === count);
+            if (existingIndex !== -1) {
+                servers[guildId].roles[existingIndex].name = roleName;
+            } else {
+                servers[guildId].roles.push({ threshold: count, name: roleName });
+            }
+            
+            servers[guildId].roles.sort((a, b) => b.threshold - a.threshold);
+            saveServers(servers);
+            
+            await interaction.reply({ content: `Successfully added counting role **${roleName}** for reaching count **${count}**!`, ephemeral: true });
         }
     }
 });

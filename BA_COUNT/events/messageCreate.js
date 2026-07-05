@@ -2,6 +2,7 @@ const { getServers, saveServers, getUsers, saveUsers } = require('../utils/dataM
 const { EmbedBuilder } = require('discord.js');
 
 const COUNTING_ROLES = [
+    { threshold: 300, name: 'Region Expert' },
     { threshold: 200, name: 'Region master' },
     { threshold: 150, name: 'master' },
     { threshold: 100, name: 'counting expert' },
@@ -10,6 +11,7 @@ const COUNTING_ROLES = [
 
 module.exports = {
     name: 'messageCreate',
+    DEFAULT_ROLES: COUNTING_ROLES,
     async execute(message, client) {
         if (message.author.bot) return;
 
@@ -22,15 +24,44 @@ module.exports = {
         if (!serverConfig) return;
         if (message.channel.id !== serverConfig.channelId) return;
 
-        // Ensure the message is actually a number
-        const numberRegex = /^\d+$/;
-        if (!numberRegex.test(message.content.trim())) {
-            // If they type regular text, just ignore it and don't delete it
+        // Allow digits, hex/bin/oct characters, basic operators, and spaces for math expressions
+        const mathRegex = /^[\da-fA-FxXbBoO+\-*/. ()]+$/;
+        const content = message.content.trim();
+        
+        if (!mathRegex.test(content) || content === '') {
+            // If they type regular text or invalid math, ignore it
             return;
         }
 
-        const inputNumber = parseInt(message.content.trim(), 10);
         const expectedNumber = serverConfig.currentCount + 1;
+        let inputNumber = null;
+        
+        try {
+            // Safe evaluation of the math expression
+            const evalResult = Function(`'use strict'; return (${content})`)();
+            if (typeof evalResult === 'number' && !isNaN(evalResult) && isFinite(evalResult)) {
+                inputNumber = evalResult;
+            }
+        } catch (error) {
+            // If evaluation fails (e.g. pure hex like "A"), we'll handle it below
+        }
+
+        // Magic base detection! If it didn't match decimal, check binary, and hex
+        if (inputNumber !== expectedNumber && /^[a-fA-F0-9]+$/.test(content)) {
+            if (parseInt(content, 2) === expectedNumber) {
+                inputNumber = expectedNumber;
+            } else if (parseInt(content, 16) === expectedNumber) {
+                inputNumber = expectedNumber;
+            } else if (inputNumber === null) {
+                // If it failed eval (like "A" or "BAD") but is valid hex, set it so it triggers a penalty
+                inputNumber = parseInt(content, 16);
+            }
+        }
+
+        // If we still don't have a valid number, it's just garbage text (like "60+"), ignore it
+        if (inputNumber === null) {
+            return;
+        }
         const users = getUsers();
         
         if (!users[guildId]) users[guildId] = {};
@@ -50,14 +81,17 @@ module.exports = {
 
         // 2. Check if the number is correct
         if (inputNumber !== expectedNumber) {
-            await message.delete().catch(() => {});
-            
+            // Keep the user's message and send the embed permanently
             const errorEmbed = new EmbedBuilder()
                 .setColor('#ff0000')
-                .setDescription(`Noob The present count is **${serverConfig.currentCount}** next is **${expectedNumber}** you cant even see this , go get an eye operation`);
+                .setDescription(`Hey mates because of this guy the count is reseted this guy typed **${content}** instead of **${expectedNumber}**\n\n**Counting has been reset to 0!**`);
                 
-            const reply = await message.channel.send({ content: `<@${message.author.id}>`, embeds: [errorEmbed] });
-            setTimeout(() => reply.delete().catch(() => {}), 10000);
+            await message.channel.send({ content: `<@${message.author.id}>`, embeds: [errorEmbed] });
+            
+            // Reset Server Count
+            serverConfig.currentCount = 0;
+            serverConfig.lastUserId = null;
+            saveServers(servers);
             
             // Handle strikes
             userData.strikes += 1;
@@ -66,14 +100,21 @@ module.exports = {
                 try {
                     // Mute for 2 minutes (120,000 ms)
                     const member = await message.guild.members.fetch(message.author.id);
-                    await member.timeout(120000, '5 mistakes in counting channel');
+                    await member.timeout(120000, '5 mistakes in channel');
                     const muteMsg = await message.channel.send(`<@${message.author.id}> has been muted for 2 minutes for failing to count 5 times.`);
                     setTimeout(() => muteMsg.delete().catch(() => {}), 10000);
                     userData.strikes = 0; // Reset after muting
                 } catch (error) {
-                    console.error('Failed to timeout member:', error);
-                    const errorMsg = await message.channel.send(`Tried to mute <@${message.author.id}> but I lack permissions.`);
-                    setTimeout(() => errorMsg.delete().catch(() => {}), 5000);
+                    const errorMsg = await message.channel.send(`That Noob <@${message.author.id}> failed to count 5 times, but their role is too high for me to mute them! 🙄`);
+                    setTimeout(() => errorMsg.delete().catch(() => {}), 10000);
+                    userData.strikes = 0; // Still reset their strikes so it doesn't spam
+                }
+            }
+            
+            // Reset scores for all users in the server
+            if (users[guildId]) {
+                for (const uid in users[guildId]) {
+                    users[guildId][uid].score = 0;
                 }
             }
             
@@ -94,17 +135,30 @@ module.exports = {
         // Add tick reaction
         await message.react('✅').catch(() => {});
 
-        // 4. Role Management
-        await manageRoles(message.guild, message.member, userData.score, message.channel);
+        // 4. Server Levels Check
+        if (serverConfig.levels && serverConfig.levels[expectedNumber]) {
+            const levelReached = serverConfig.levels[expectedNumber];
+            const levelEmbed = new EmbedBuilder()
+                .setTitle('🎉 Server Level Up! 🎉')
+                .setColor('#ffd700') // Gold color
+                .setDescription(`Woah! **${message.guild.name}** reached **Level ${levelReached}** by hitting ${expectedNumber} counts! Keep it up! 🚀`);
+            
+            await message.channel.send({ embeds: [levelEmbed] });
+        }
+
+        // 5. Role Management
+        await manageRoles(message.guild, message.member, userData.score, message.channel, serverConfig.roles);
     }
 };
 
-async function manageRoles(guild, member, score, channel) {
+async function manageRoles(guild, member, score, channel, serverRoles) {
     if (!member) return;
+
+    const activeRoles = (serverRoles && serverRoles.length > 0) ? serverRoles : COUNTING_ROLES;
 
     // Determine target role based on score
     let targetRoleName = null;
-    for (const roleDef of COUNTING_ROLES) {
+    for (const roleDef of activeRoles) {
         if (score >= roleDef.threshold) {
             targetRoleName = roleDef.name;
             break; // Since array is sorted descending, first match is highest
@@ -127,7 +181,7 @@ async function manageRoles(guild, member, score, channel) {
         if (member.roles.cache.has(targetRole.id)) return;
 
         // User deserves the new role, but we need to remove older counting roles first
-        const allCountingRoleNames = COUNTING_ROLES.map(r => r.name);
+        const allCountingRoleNames = activeRoles.map(r => r.name);
         const rolesToRemove = member.roles.cache.filter(r => allCountingRoleNames.includes(r.name) && r.name !== targetRoleName);
         
         if (rolesToRemove.size > 0) {

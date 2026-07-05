@@ -3,6 +3,8 @@ const path = require('path');
 
 const serversPath = path.join(__dirname, '..', 'data', 'servers.json');
 const usersPath = path.join(__dirname, '..', 'data', 'users.json');
+const clashUsersPath = path.join(__dirname, '..', 'data', 'clash_users.json');
+const clashClansPath = path.join(__dirname, '..', 'data', 'clash_clans.json');
 
 function readJSON(filePath) {
     if (!fs.existsSync(filePath)) return {};
@@ -31,5 +33,9 @@ module.exports = {
     getServers: () => readJSON(serversPath),
     saveServers: (data) => writeJSON(serversPath, data),
     getUsers: () => readJSON(usersPath),
-    saveUsers: (data) => writeJSON(usersPath, data)
+    saveUsers: (data) => writeJSON(usersPath, data),
+    getClashUsers: () => readJSON(clashUsersPath),
+    saveClashUsers: (data) => writeJSON(clashUsersPath, data),
+    getClashClans: () => readJSON(clashClansPath),
+    saveClashClans: (data) => writeJSON(clashClansPath, data)
 };

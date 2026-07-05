@@ -16,10 +16,14 @@ module.exports = {
             return await interaction.reply({ content: `No one has counted anything yet in this server!`, ephemeral: true });
         }
         
-        // Convert to array and sort by score descending
         const leaderboardData = Object.entries(serverUsers)
             .map(([userId, data]) => ({ userId, score: data.score }))
+            .filter(user => user.score > 0)
             .sort((a, b) => b.score - a.score);
+            
+        if (leaderboardData.length === 0) {
+            return await interaction.reply({ content: `No one has a score greater than 0 right now! Start counting to climb the ranks.`, ephemeral: true });
+        }
             
         const embeds = [];
         const chunkSize = 20; // Show 20 users per embed

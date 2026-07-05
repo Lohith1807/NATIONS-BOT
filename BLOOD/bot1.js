@@ -13,6 +13,7 @@ const bot1 = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.GuildMembers, // Required for tracking role changes
+        GatewayIntentBits.GuildInvites, // Required for invite tracking
     ],
     partials: ['CHANNEL'], // Required for receiving DMs
 });
@@ -45,6 +46,38 @@ loadCommands(commandsPath);
 bot1.once("ready", async () => {
     console.log(`✅ [Bot1] ${bot1.user.tag} is online`);
     
+    bot1.user.setPresence({
+        status: "dnd",
+        activities: [
+            {
+                name: "Watching Blood Alliance !!",
+                type: 3 // 👀 3 = Watching
+            }
+        ]
+    });
+
+    // Cache invites
+    const { invitesCache, getInviteConfig } = require('./utils/inviteManager.js');
+    for (const guild of bot1.guilds.cache.values()) {
+        const config = getInviteConfig(guild.id);
+        if (config && config.enabled) {
+            try {
+                const invites = await guild.invites.fetch();
+                try {
+                    if (guild.features.includes('VANITY_URL')) {
+                        const vanity = await guild.fetchVanityData();
+                        if (vanity) {
+                            invites.set(vanity.code, { code: vanity.code, uses: vanity.uses, inviter: null, isVanity: true });
+                        }
+                    }
+                } catch (e) {}
+                invitesCache.set(guild.id, invites);
+            } catch (err) {
+                console.error(`Failed to fetch invites for guild ${guild.id}:`, err);
+            }
+        }
+    }
+
     const { checkReminders } = require('./utils/reminderManager.js');
     setInterval(() => checkReminders(bot1), 10000);
 
@@ -397,6 +430,90 @@ ${getEmoji('rarroww')} **Assistance:** Provide guidance and help in the assistan
         }
     } catch (err) {
         console.error("❌ [Bot1] Error in guildMemberUpdate:", err);
+    }
+});
+
+bot1.on('inviteCreate', async (invite) => {
+    const { invitesCache, getInviteConfig } = require('./utils/inviteManager.js');
+    const config = getInviteConfig(invite.guild.id);
+    if (!config || !config.enabled) return;
+    
+    let cache = invitesCache.get(invite.guild.id);
+    if (!cache) {
+        try {
+            cache = await invite.guild.invites.fetch();
+            invitesCache.set(invite.guild.id, cache);
+        } catch (err) {
+            return;
+        }
+    } else {
+        cache.set(invite.code, invite);
+    }
+});
+
+bot1.on('inviteDelete', async (invite) => {
+    const { invitesCache, getInviteConfig } = require('./utils/inviteManager.js');
+    const config = getInviteConfig(invite.guild.id);
+    if (!config || !config.enabled) return;
+
+    const cache = invitesCache.get(invite.guild.id);
+    if (cache) {
+        cache.delete(invite.code);
+    }
+});
+
+bot1.on('guildMemberAdd', async (member) => {
+    const { invitesCache, getInviteConfig } = require('./utils/inviteManager.js');
+    const { getEmoji } = require('./utils/botemoji.js');
+    const { EmbedBuilder } = require('discord.js');
+    
+    const config = getInviteConfig(member.guild.id);
+    if (!config || !config.enabled || !config.channelId) return;
+
+    const channel = member.guild.channels.cache.get(config.channelId);
+    if (!channel) return;
+
+    const cachedInvites = invitesCache.get(member.guild.id);
+    if (!cachedInvites) return;
+
+    try {
+        const newInvites = await member.guild.invites.fetch();
+        try {
+            if (member.guild.features.includes('VANITY_URL')) {
+                const vanity = await member.guild.fetchVanityData();
+                if (vanity) {
+                    newInvites.set(vanity.code, { code: vanity.code, uses: vanity.uses, inviter: null, isVanity: true });
+                }
+            }
+        } catch (e) {}
+
+        const usedInvite = newInvites.find(inv => {
+            const cachedInv = cachedInvites.get(inv.code);
+            if (!cachedInv) return inv.uses > 0;
+            return inv.uses > cachedInv.uses;
+        });
+
+        invitesCache.set(member.guild.id, newInvites);
+
+        const embed = new EmbedBuilder()
+            .setColor('#2ECC71')
+            .setTitle(`${getEmoji('mem')} New Member Joined`)
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+            .setDescription(`**${member.user.tag}** has joined the server!`)
+            .addFields(
+                { name: 'Invited By', value: usedInvite && usedInvite.inviter ? `<@${usedInvite.inviter.id}>` : 'Unknown / Vanity URL', inline: true },
+                { name: 'Invite Code', value: usedInvite ? `\`${usedInvite.code}\`` : 'N/A', inline: true },
+                { name: 'Invite Uses', value: usedInvite ? `${usedInvite.uses}` : 'N/A', inline: true }
+            )
+            .setTimestamp();
+
+        if (usedInvite && usedInvite.expiresAt) {
+            embed.addFields({ name: 'Invite Expires', value: `<t:${Math.floor(usedInvite.expiresAt.getTime() / 1000)}:R>`, inline: true });
+        }
+
+        await channel.send({ embeds: [embed] });
+    } catch (err) {
+        console.error('Failed to process guildMemberAdd for invites:', err);
     }
 });
 
