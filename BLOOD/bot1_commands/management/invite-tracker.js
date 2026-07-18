@@ -28,16 +28,9 @@ module.exports = {
 
             // Pre-cache the invites for this guild since tracking was just started
             try {
-                const invites = await interaction.guild.invites.fetch();
-                try {
-                    if (interaction.guild.features.includes('VANITY_URL')) {
-                        const vanity = await interaction.guild.fetchVanityData();
-                        if (vanity) {
-                            invites.set(vanity.code, { code: vanity.code, uses: vanity.uses, inviter: null, isVanity: true });
-                        }
-                    }
-                } catch (e) {}
-                invitesCache.set(interaction.guildId, invites);
+                const { fetchInviteSnapshot } = require('../../utils/inviteManager.js');
+                const snapshot = await fetchInviteSnapshot(interaction.guild);
+                invitesCache.set(interaction.guildId, snapshot);
                 
                 const embed = new EmbedBuilder()
                     .setColor('#2ECC71')

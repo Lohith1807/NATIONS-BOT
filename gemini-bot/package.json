@@ -1,0 +1,8 @@
+{
+  "name": "gemini-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Discord Gemini Roast Bot",
+  "main": "index.js",
+  "dependencies": {}
+}

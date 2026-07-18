@@ -7,16 +7,21 @@ module.exports = {
         .setName('make_announcement')
         .setDescription('Create an announcement in a specified channel (Staff/Admin only)')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-        .addChannelOption(option =>
-            option.setName('channel')
-                .setDescription('The channel to send the announcement to')
-                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-                .setRequired(true)
-        )
         .addBooleanOption(option =>
             option.setName('embed_message')
                 .setDescription('Should the message be embedded? (Yes/No)')
                 .setRequired(true)
+        )
+        .addBooleanOption(option =>
+            option.setName('send_image')
+                .setDescription('Send the Blood Alliance banner image with the announcement? (Yes/No)')
+                .setRequired(true)
+        )
+        .addChannelOption(option =>
+            option.setName('channel')
+                .setDescription('The channel to send the announcement to')
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
+                .setRequired(false)
         ),
 
     async execute(interaction) {
@@ -27,11 +32,12 @@ module.exports = {
             });
         }
 
-        const targetChannel = interaction.options.getChannel('channel');
+        const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
         const isEmbed = interaction.options.getBoolean('embed_message');
+        const sendImage = interaction.options.getBoolean('send_image');
 
         const modal = new ModalBuilder()
-            .setCustomId(`make_announcement_modal:${targetChannel.id}:${isEmbed}`)
+            .setCustomId(`make_announcement_modal:${targetChannel.id}:${isEmbed}:${sendImage}`)
             .setTitle('Create Announcement');
 
         const textInput = new TextInputBuilder()

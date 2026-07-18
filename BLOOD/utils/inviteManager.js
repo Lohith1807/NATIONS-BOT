@@ -56,9 +56,40 @@ function getInviteConfig(guildId) {
     return getConfigs()[guildId];
 }
 
+async function fetchInviteSnapshot(guild) {
+    const snapshot = new Map();
+    try {
+        const invites = await guild.invites.fetch();
+        invites.forEach(inv => {
+            snapshot.set(inv.code, {
+                code: inv.code,
+                uses: inv.uses,
+                inviter: inv.inviter,
+                maxUses: inv.maxUses,
+                expiresAt: inv.expiresAt
+            });
+        });
+        
+        if (guild.features.includes('VANITY_URL')) {
+            const vanity = await guild.fetchVanityData().catch(() => null);
+            if (vanity) {
+                snapshot.set(vanity.code, {
+                    code: vanity.code,
+                    uses: vanity.uses,
+                    inviter: null,
+                    isVanity: true,
+                    expiresAt: null
+                });
+            }
+        }
+    } catch (err) {}
+    return snapshot;
+}
+
 module.exports = {
     invitesCache,
     setInviteLogChannel,
     disableInviteLog,
-    getInviteConfig
+    getInviteConfig,
+    fetchInviteSnapshot
 };

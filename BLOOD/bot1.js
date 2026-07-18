@@ -11,6 +11,7 @@ const bot1 = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent, // Required for reading message content for softban
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.GuildMembers, // Required for tracking role changes
         GatewayIntentBits.GuildInvites, // Required for invite tracking
@@ -57,21 +58,13 @@ bot1.once("ready", async () => {
     });
 
     // Cache invites
-    const { invitesCache, getInviteConfig } = require('./utils/inviteManager.js');
+    const { invitesCache, getInviteConfig, fetchInviteSnapshot } = require('./utils/inviteManager.js');
     for (const guild of bot1.guilds.cache.values()) {
         const config = getInviteConfig(guild.id);
         if (config && config.enabled) {
             try {
-                const invites = await guild.invites.fetch();
-                try {
-                    if (guild.features.includes('VANITY_URL')) {
-                        const vanity = await guild.fetchVanityData();
-                        if (vanity) {
-                            invites.set(vanity.code, { code: vanity.code, uses: vanity.uses, inviter: null, isVanity: true });
-                        }
-                    }
-                } catch (e) {}
-                invitesCache.set(guild.id, invites);
+                const snapshot = await fetchInviteSnapshot(guild);
+                invitesCache.set(guild.id, snapshot);
             } catch (err) {
                 console.error(`Failed to fetch invites for guild ${guild.id}:`, err);
             }
@@ -136,6 +129,7 @@ bot1.on("interactionCreate", async (interaction) => {
                 const parts = id.split(':');
                 const channelId = parts[1];
                 const isEmbed = parts[2] === 'true';
+                const sendImage = parts[3] === 'true';
                 const channel = interaction.guild.channels.cache.get(channelId);
                 if (!channel) {
                     return interaction.editReply({ content: "❌ Target channel not found." });
@@ -150,7 +144,7 @@ bot1.on("interactionCreate", async (interaction) => {
                 
                 const announceImagePath = path.join(__dirname, './bot1_commands/utility/baannounce.png');
                 const files = [];
-                if (fs.existsSync(announceImagePath)) {
+                if (sendImage && fs.existsSync(announceImagePath)) {
                     files.push({ attachment: announceImagePath, name: 'baannounce.png' });
                 }
 
@@ -162,9 +156,9 @@ bot1.on("interactionCreate", async (interaction) => {
                             .setTitle(`${getEmoji('alaram')} Announcement`)
                             .setDescription(processedText)
                             .setTimestamp()
-                            .setFooter({ text: 'Blood Alliance', iconURL: 'attachment://baannounce.png' });
+                            .setFooter({ text: 'Blood Alliance', iconURL: sendImage ? 'attachment://baannounce.png' : undefined });
 
-                        if (files.length > 0) {
+                        if (sendImage && files.length > 0) {
                             embed.setImage('attachment://baannounce.png');
                         }
                         messagePayload = { embeds: [embed], files: files };
@@ -343,6 +337,40 @@ bot1.on("guildMemberUpdate", async (oldMember, newMember) => {
         const { EmbedBuilder } = require('discord.js');
 
         const STAFF_ROLES = {
+                "1153997630112792577": {
+                name: "Admin",
+                emoji: "crown",
+                color: "#e74c3c",
+                description: `
+${getEmoji('yarrow')} **Role Overview:** You are now a primary authority of the server. Your core duty is to **control, watch, and keep the server running smoothly** — handle situations yourself rather than passing everything up to the Owner or Retired Persons.
+
+${getEmoji('parrow')} **Permission Chain:** You operate under the Owner's authority. Do **not** take major or irreversible actions without the **Owner's explicit permission**. For day-to-day management, you have full operational freedom — use it wisely.
+
+${getEmoji('rarroww')} **Server Control & Watchdog:** Monitor all channels, voice rooms, and staff activity. Be the first to notice and act on problems. Ensure every team is functioning correctly and meeting expectations.
+
+${getEmoji('yarrow')} **Staff Oversight:** Supervise, guide, and support the staff team. Promote deserving members and address underperformance. Conduct regular check-ins to keep the team active and on track.
+
+${getEmoji('parrow')} **Ticket & Situation Management:** You may step into any ticket at any time. When doing so, the assigned staff will ask *"Can I continue?"* — reply clearly so they know whether to proceed or hand it over.
+
+${getEmoji('rarroww')} **Key Reminder:** You are here to **run the server**, not redirect every problem to the Owner. Take ownership, act proactively, and keep the Owner informed of major events only.`
+            },
+            "1420626301328297984": {
+                name: "Co-Admin",
+                emoji: "bluestar",
+                color: "#9b59b6",
+                description: `
+${getEmoji('yarrow')} **Role Overview:** As Co-Admin, you are a **direct support to the Admin**. Your role is to assist in watching and keeping the server running — not to act independently. Your actions are guided and authorized by the Admin.
+
+${getEmoji('parrow')} **Permission Chain:** You operate **strictly under Admin's authority**. Do **not** take direct or significant actions without the Admin's explicit permission. This includes staff decisions, disciplinary actions, alliance approvals, and any impactful server change. When unsure — **always check with the Admin first**.
+
+${getEmoji('rarroww')} **Day-to-Day Duties:** Monitor channels, voice rooms, and staff activity alongside the Admin. Watch ongoing tickets, flag issues early, and stay present and responsive.
+
+${getEmoji('yarrow')} **Assisting the Admin:** Carry out tasks assigned by the Admin promptly. Relay information between the Admin and staff team. Help the Admin stay informed by surfacing problems before they escalate.
+
+${getEmoji('parrow')} **Situation Handling:** If the Admin is unavailable and something minor needs action, you may act — but inform the Admin as soon as possible. For anything significant, wait for Admin approval. Never make alliance decisions, promotions/demotions, or major bans without prior Admin sign-off.
+
+${getEmoji('rarroww')} **Key Reminder:** Your power comes from the Admin's trust. Think of yourself as the Admin's right hand — **supportive, vigilant, and always in sync** with their decisions. Never exceed your authority.`
+            },
             "1513940638909988874": {
                 name: "Server Moderator",
                 emoji: "crown",
@@ -378,6 +406,10 @@ ${getEmoji('parrow')} **Assistance:** Assist admins with staff management.`
                 emoji: "bluestar",
                 color: "#00aaff",
                 description: `
+${getEmoji('yarrow')} **Ticket Conduct — Before Claiming:** You are NOT supposed to interfere in a ticket you have not claimed. If another staff has taken it, stay out unless they tag you.
+
+${getEmoji('yarrow')} **Ticket Conduct — After Claiming:** Once you claim a ticket, no other staff may interfere unless you tag and assign them. Admins/Owners can step in at any time — if they do, tag them and ask them in staff chat not in that ticket: "Can I continue with this ticket?" and proceed based on their reply.
+
 ${getEmoji('parrow')} **Player Tickets:** If a player needs a clan, check clan needs using \`;compo all\` in the staff bot room. Guide them to a suitable clan. Ask them to follow the steps and link their account to Clash King bot using \`/link\`. After review, use \`/approve\` or \`/decline\`.
 
 ${getEmoji('rarroww')} **Alliance & Rep Tickets:** For clans wanting to join the alliance or users applying for Rep, ask them to follow the required steps and tag admins.
@@ -434,20 +466,20 @@ ${getEmoji('rarroww')} **Assistance:** Provide guidance and help in the assistan
 });
 
 bot1.on('inviteCreate', async (invite) => {
-    const { invitesCache, getInviteConfig } = require('./utils/inviteManager.js');
+    const { invitesCache, getInviteConfig, fetchInviteSnapshot } = require('./utils/inviteManager.js');
     const config = getInviteConfig(invite.guild.id);
     if (!config || !config.enabled) return;
     
     let cache = invitesCache.get(invite.guild.id);
     if (!cache) {
         try {
-            cache = await invite.guild.invites.fetch();
+            cache = await fetchInviteSnapshot(invite.guild);
             invitesCache.set(invite.guild.id, cache);
         } catch (err) {
             return;
         }
     } else {
-        cache.set(invite.code, invite);
+        cache.set(invite.code, { code: invite.code, uses: invite.uses, inviter: invite.inviter, maxUses: invite.maxUses, expiresAt: invite.expiresAt });
     }
 });
 
@@ -463,7 +495,7 @@ bot1.on('inviteDelete', async (invite) => {
 });
 
 bot1.on('guildMemberAdd', async (member) => {
-    const { invitesCache, getInviteConfig } = require('./utils/inviteManager.js');
+    const { invitesCache, getInviteConfig, fetchInviteSnapshot } = require('./utils/inviteManager.js');
     const { getEmoji } = require('./utils/botemoji.js');
     const { EmbedBuilder } = require('discord.js');
     
@@ -477,23 +509,42 @@ bot1.on('guildMemberAdd', async (member) => {
     if (!cachedInvites) return;
 
     try {
-        const newInvites = await member.guild.invites.fetch();
-        try {
-            if (member.guild.features.includes('VANITY_URL')) {
-                const vanity = await member.guild.fetchVanityData();
-                if (vanity) {
-                    newInvites.set(vanity.code, { code: vanity.code, uses: vanity.uses, inviter: null, isVanity: true });
+        const newInvites = await fetchInviteSnapshot(member.guild);
+
+        let usedInvite = null;
+        
+        for (const [code, newInv] of newInvites.entries()) {
+            const cachedInv = cachedInvites.get(code);
+            if (!cachedInv) {
+                if (newInv.uses > 0) {
+                    usedInvite = newInv;
+                    break;
+                }
+            } else if (newInv.uses > cachedInv.uses) {
+                usedInvite = newInv;
+                break;
+            }
+        }
+
+        // Check for single-use deleted invite
+        if (!usedInvite) {
+            for (const [code, cachedInv] of cachedInvites.entries()) {
+                if (!newInvites.has(code) && cachedInv.maxUses !== 0) {
+                    usedInvite = cachedInv;
+                    break;
                 }
             }
-        } catch (e) {}
-
-        const usedInvite = newInvites.find(inv => {
-            const cachedInv = cachedInvites.get(inv.code);
-            if (!cachedInv) return inv.uses > 0;
-            return inv.uses > cachedInv.uses;
-        });
+        }
 
         invitesCache.set(member.guild.id, newInvites);
+
+        let totalInvitesText = 'N/A';
+        if (usedInvite && usedInvite.inviter) {
+            const totalUses = Array.from(newInvites.values())
+                .filter(i => i.inviter && i.inviter.id === usedInvite.inviter.id)
+                .reduce((acc, curr) => acc + curr.uses, 0);
+            totalInvitesText = `${totalUses}`;
+        }
 
         const embed = new EmbedBuilder()
             .setColor('#2ECC71')
@@ -503,7 +554,7 @@ bot1.on('guildMemberAdd', async (member) => {
             .addFields(
                 { name: 'Invited By', value: usedInvite && usedInvite.inviter ? `<@${usedInvite.inviter.id}>` : 'Unknown / Vanity URL', inline: true },
                 { name: 'Invite Code', value: usedInvite ? `\`${usedInvite.code}\`` : 'N/A', inline: true },
-                { name: 'Invite Uses', value: usedInvite ? `${usedInvite.uses}` : 'N/A', inline: true }
+                { name: 'Total Invites', value: totalInvitesText, inline: true }
             )
             .setTimestamp();
 
@@ -514,6 +565,80 @@ bot1.on('guildMemberAdd', async (member) => {
         await channel.send({ embeds: [embed] });
     } catch (err) {
         console.error('Failed to process guildMemberAdd for invites:', err);
+    }
+});
+
+bot1.on('messageCreate', async (message) => {
+    if (message.author.bot || !message.guild) return;
+
+
+    const { getSoftbanConfig } = require('./utils/softbanManager.js');
+    const { getEmoji } = require('./utils/botemoji.js');
+    const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+
+    const config = getSoftbanConfig(message.guild.id);
+    if (config && config.enabled && config.honeypotChannelId === message.channel.id) {
+        // Ignore administrators so they can bypass the honeypot restrictions
+        if (message.member && message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
+
+        // Check for links, invites, or attachments
+        const hasLinks = /(https?:\/\/[^\s]+|discord\.gg\/[^\s]+|discord\.com\/invite\/[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\/[^\s]*)?)/gi.test(message.content);
+        const hasAttachments = message.attachments.size > 0;
+
+        if (hasLinks || hasAttachments) {
+            try {
+                // Soft ban logic: Ban and delete messages (86400 seconds = 1 day)
+                const member = await message.guild.members.fetch(message.author.id);
+                if (member) {
+                    // Try to DM them BEFORE banning
+                    try {
+                        const contactIdsStr = process.env.SOFTBAN_CONTACT_IDS 
+                            ? process.env.SOFTBAN_CONTACT_IDS.split(',').map(id => `<@${id.trim()}>`).join(' ') 
+                            : 'the administrators';
+
+                        const dmEmbed = new EmbedBuilder()
+                            .setColor('#E74C3C')
+                            .setTitle('⚠️ Soft-Banned from the Server')
+                            .setDescription(`Your messages in the honeypot channel triggered our spam protection.\n\nYou have been temporarily removed from the server and your messages were deleted. If this was a mistake and you are a real user, please contact the administrators to rejoin:\n\n${contactIdsStr}`)
+                            .setFooter({ text: 'Blood Alliance' });
+                        await member.send({ embeds: [dmEmbed] });
+                    } catch (e) {
+                        console.log(`Could not send DM to ${member.user.tag}`);
+                    }
+
+                    // Ban and delete messages
+                    await member.ban({ deleteMessageSeconds: 86400, reason: 'Soft-ban: Sent links/images in honeypot channel.' });
+                    
+                    // Unban after 10 seconds
+                    setTimeout(async () => {
+                        try {
+                            await message.guild.members.unban(member.id, 'Soft-ban 10s duration ended');
+                        } catch (e) {
+                            if (e.code !== 50013 && e.code !== 10026) console.error('Failed to unban user after soft-ban:', e);
+                        }
+                    }, 10000);
+
+                    const logChannel = message.guild.channels.cache.get(config.logChannelId);
+                    if (logChannel) {
+                        const embed = new EmbedBuilder()
+                            .setColor('#E74C3C')
+                            .setTitle(`${getEmoji('bluex')} User Soft-Banned`)
+                            .setDescription(`**User:** ${message.author.tag} (<@${message.author.id}>)\n**Action:** Banned & messages deleted, unbanned after 10s.\n**Reason:** Sent link/image in honeypot channel <#${config.honeypotChannelId}>.`)
+                            .setTimestamp();
+                        await logChannel.send({ embeds: [embed] });
+                    }
+                }
+            } catch (err) {
+                if (err.code !== 50013) console.error('Failed to soft-ban user:', err);
+            }
+        } else {
+            // Delete any other messages to keep the honeypot channel clean
+            try {
+                await message.delete();
+            } catch (err) {
+                if (err.code !== 50013 && err.code !== 10008) console.error('Failed to delete honeypot message:', err);
+            }
+        }
     }
 });
 

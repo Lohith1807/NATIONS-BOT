@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { getServers, saveServers, getUsers, saveUsers } = require('../utils/dataManager');
+const { removeAllCountingRoles } = require('../events/messageCreate');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -12,17 +13,26 @@ module.exports = {
         let servers = getServers();
         
         if (servers[guildId]) {
-            servers[guildId].currentCount = 0;
-            servers[guildId].lastUserId = null;
+            const serverConfig = servers[guildId];
+
+            // Reset count and last user
+            serverConfig.currentCount = 0;
+            serverConfig.lastUserId = null;
             saveServers(servers);
 
+            // Wipe all user scores
             let users = getUsers();
             if (users[guildId]) {
                 delete users[guildId];
                 saveUsers(users);
             }
 
-            await interaction.reply({ content: `The count and leaderboard have been reset! Let's start fresh.`, ephemeral: false });
+            // Remove all counting roles from every member
+            removeAllCountingRoles(interaction.guild, serverConfig).catch(err =>
+                console.error('Error removing counting roles on manual reset:', err)
+            );
+
+            await interaction.reply({ content: `✅ The count, leaderboard, and all counting roles have been reset! Let's start fresh.`, ephemeral: false });
         } else {
             await interaction.reply({ content: `Counting is not currently active in this server. Use /start_counting first.`, ephemeral: true });
         }

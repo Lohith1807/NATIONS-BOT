@@ -12,6 +12,7 @@ const COUNTING_ROLES = [
 module.exports = {
     name: 'messageCreate',
     DEFAULT_ROLES: COUNTING_ROLES,
+    removeAllCountingRoles,
     async execute(message, client) {
         if (message.author.bot) return;
 
@@ -119,6 +120,12 @@ module.exports = {
             }
             
             saveUsers(users);
+
+            // Remove all counting roles from every member
+            removeAllCountingRoles(message.guild, servers[guildId]).catch(err =>
+                console.error('Error removing counting roles on reset:', err)
+            );
+
             return;
         }
 
@@ -196,5 +203,41 @@ async function manageRoles(guild, member, score, channel, serverRoles) {
     } catch (error) {
         console.error('Error managing roles:', error);
         // We could notify the channel, but it might get spammy.
+    }
+}
+
+async function removeAllCountingRoles(guild, serverConfig) {
+    const activeRoles = (serverConfig && serverConfig.roles && serverConfig.roles.length > 0)
+        ? serverConfig.roles
+        : COUNTING_ROLES;
+
+    const countingRoleNames = activeRoles.map(r => r.name);
+    const countingRoles = guild.roles.cache.filter(r => countingRoleNames.includes(r.name));
+    if (countingRoles.size === 0) return;
+
+    const users = getUsers();
+    const serverUsers = users[guild.id] || {};
+    const userIds = Object.keys(serverUsers);
+
+    for (const userId of userIds) {
+        try {
+            let member = guild.members.cache.get(userId);
+            if (!member) {
+                member = await guild.members.fetch(userId);
+            }
+            if (member) {
+                const rolesToRemove = member.roles.cache.filter(r => countingRoles.has(r.id));
+                if (rolesToRemove.size > 0) {
+                    await member.roles.remove(rolesToRemove, 'Counting reset — roles cleared').catch(err => {
+                        console.error(`Failed to remove role from ${member.user.tag}:`, err.message);
+                    });
+                }
+            }
+        } catch (err) {
+            if (err.code !== 10007) {
+                console.error(`Failed to fetch member ${userId} for role removal:`, err.message);
+            }
+        }
+        await new Promise(r => setTimeout(r, 50));
     }
 }
