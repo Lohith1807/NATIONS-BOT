@@ -21,6 +21,8 @@ module.exports = {
                 .setRequired(true)
         ),
     async execute(interaction) {
+        await interaction.deferReply({ ephemeral: false });
+
         const botTarget = interaction.options.getString("bots");
         const message = interaction.options.getString("message");
         const username = interaction.user.username;
@@ -47,9 +49,8 @@ module.exports = {
             dmStatus = ` (${getEmoji("alaram")} Could not send DM notification to <@${targetUserId}>)`;
         }
 
-        return interaction.reply({
-            content: `${getEmoji("gtick")} Task added to the todo list for **${botTarget}**: **${newTodo.task}**${dmStatus}`,
-            ephemeral: false
+        return interaction.editReply({
+            content: `${getEmoji("gtick")} Task added to the todo list for **${botTarget}**: **${newTodo.task}**${dmStatus}`
         });
     }
 };

@@ -78,7 +78,11 @@ ${getEmoji('yarrow')} **Ticket Conduct — After Claiming:**
 > ${getEmoji('rarroww')} Once you have claimed a ticket, **no other staff** may interfere with it unless you tag and assign them yourself.
 > ${getEmoji('parrow')} **Exception:** Admins and Server Owners can step into any ticket at any time. If an Admin or Owner joins your active ticket in the staff room, tag them and ask: *"Can I continue with this ticket?"* and proceed based on their reply.
 
-${getEmoji('rarroww')} **Clan Assignment:** Assign recruits based on requirements in the recruitment channel (https://discord.com/channels/1153720899715993681/1503298102860320829). After assigning, you **MUST** update the requirement count using \`/edit-recuirtment clan: <clan>\`. (e.g., if they need 5 TH18s and you assign 2, change the count to 3). Accurate counts are mandatory! After review, use \`/approve\` or \`/decline\`.
+${getEmoji('parrow')} **Player History Check:**
+> ${getEmoji('rarroww')} After a player submits their application, you **MUST** check their Chocolate Clash history using \`?check #playertag\`.
+> ${getEmoji('parrow')} Verify their profile, check their clan history, and ensure they are not a banned player. Take a screenshot of the Chocolate Clash page as proof.
+
+${getEmoji('rarroww')} **Clan Assignment:** Assign recruits based on requirements in the recruitment channel (https://discord.com/channels/1153720899715993681/1503298102860320829). After assigning, you **MUST** update the requirement count using \`/edit-recruitment clan: <clan>\`. (e.g., if they need 5 TH18s and you assign 2, change the count to 3). Accurate counts are mandatory! After review, use \`/approve\` or \`/decline\`.
 
 ${getEmoji('rarroww')} **Alliance & Rep Tickets:** For clans wanting to join the alliance or users applying for Rep, ask them to follow the required steps and tag admins.
 
@@ -224,9 +228,20 @@ ${getEmoji('yarrow')} **Owner's Decision is Final:**
             .setTitle(title)
             .setDescription(description)
             .setColor(color)
-            .setFooter({ text: 'Nations Alliance — Role Guidelines', iconURL: interaction.guild.iconURL() })
+            .setFooter({ text: 'Blood Alliance — Role Guidelines', iconURL: interaction.guild.iconURL() })
             .setTimestamp();
 
-        await interaction.reply({ embeds: [embed] });
+        const files = [];
+        if (role === 'exec') {
+            const fs = require('fs');
+            const path = require('path');
+            const imagePath = path.join(__dirname, '../utility/chocolateclash.png');
+            if (fs.existsSync(imagePath)) {
+                files.push({ attachment: imagePath, name: 'chocolateclash.png' });
+                embed.setImage('attachment://chocolateclash.png');
+            }
+        }
+
+        await interaction.reply({ embeds: [embed], files: files });
     }
 };

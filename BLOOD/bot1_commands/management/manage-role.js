@@ -95,19 +95,21 @@ module.exports = {
             // Remove duplicates if any
             const uniqueRoles = [...new Map(roles.map(item => [item.id, item])).values()];
 
+            // Defer reply publicly to prevent timeout due to multiple role and member API calls
+            await interaction.deferReply();
+
             // ── Fetch the guild member ─────────────────────────────────────
             const targetMember = await interaction.guild.members
                 .fetch(targetUser.id)
                 .catch(() => null);
 
             if (!targetMember) {
-                return interaction.reply({
+                return interaction.editReply({
                     embeds: [
                         new EmbedBuilder()
                             .setColor(0xe74c3c)
                             .setDescription(`${bluex} Could not find **${targetUser.tag}** in this server.`)
-                    ],
-                    ephemeral: true
+                    ]
                 });
             }
 
@@ -153,7 +155,7 @@ module.exports = {
             
             // If completely failed (no roles succeeded)
             if (successfulRoles.length === 0) {
-                return interaction.reply({
+                return interaction.editReply({
                     embeds: [
                         new EmbedBuilder()
                             .setColor(0xf39c12)
@@ -161,8 +163,7 @@ module.exports = {
                                 `${star} No roles were modified for ${targetUser}.\n\n` +
                                 `**Reasons:**\n${failedRoles.map(f => `${arrowE} ${f}`).join('\n')}`
                             )
-                    ],
-                    ephemeral: true
+                    ]
                 });
             }
             
@@ -256,7 +257,7 @@ module.exports = {
                     });
                 }
 
-                return interaction.reply({
+                return interaction.editReply({
                     embeds: [addEmbed]
                 });
                 
@@ -288,7 +289,7 @@ module.exports = {
                     });
                 }
 
-                return interaction.reply({
+                return interaction.editReply({
                     embeds: [removeEmbed]
                 });
             }
@@ -301,11 +302,10 @@ module.exports = {
                         new EmbedBuilder()
                             .setColor(0xe74c3c)
                             .setDescription('❌ An unexpected error occurred while executing this command.')
-                    ],
-                    ephemeral: true
+                    ]
                 };
                 if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp(errReply);
+                    await interaction.editReply(errReply);
                 } else {
                     await interaction.reply(errReply);
                 }

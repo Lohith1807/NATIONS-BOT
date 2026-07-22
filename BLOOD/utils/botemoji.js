@@ -53,7 +53,10 @@ const emojis = {
   "gift":"1517183839062069289",
   "no1":"1517183835446579452",
   "dart":"1517183826810507355",
-  "redcrown":"1517183820430835842"
+  "redcrown":"1517183820430835842",
+  "dragon": "1529355374035996742",
+  "valkk": "1529356909675806912",
+  "gob": "1529356912397652058"
 };
 
 // Set of animated emoji names to determine <a:name:id> formatting

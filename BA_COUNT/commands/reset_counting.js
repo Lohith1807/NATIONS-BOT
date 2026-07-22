@@ -18,6 +18,7 @@ module.exports = {
             // Reset count and last user
             serverConfig.currentCount = 0;
             serverConfig.lastUserId = null;
+            serverConfig.lastMessages = {};
             saveServers(servers);
 
             // Wipe all user scores
@@ -25,7 +26,7 @@ module.exports = {
             if (users[guildId]) {
                 delete users[guildId];
                 saveUsers(users);
-            }
+            }A
 
             // Remove all counting roles from every member
             removeAllCountingRoles(interaction.guild, serverConfig).catch(err =>

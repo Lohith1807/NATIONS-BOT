@@ -92,6 +92,7 @@ module.exports = {
             // Reset Server Count
             serverConfig.currentCount = 0;
             serverConfig.lastUserId = null;
+            serverConfig.lastMessages = {};
             saveServers(servers);
             
             // Handle strikes
@@ -133,6 +134,18 @@ module.exports = {
         // Update server config
         serverConfig.currentCount = expectedNumber;
         serverConfig.lastUserId = message.author.id;
+        
+        if (!serverConfig.lastMessages) {
+            serverConfig.lastMessages = {};
+        }
+        serverConfig.lastMessages[message.id] = expectedNumber;
+
+        // Keep lastMessages size bounded (e.g., max 100 entries)
+        const keys = Object.keys(serverConfig.lastMessages);
+        if (keys.length > 100) {
+            delete serverConfig.lastMessages[keys[0]];
+        }
+
         saveServers(servers);
         
         // Update user score

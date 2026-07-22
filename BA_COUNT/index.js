@@ -1,6 +1,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-const { Client, GatewayIntentBits, Collection, Events } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events, Partials } = require('discord.js');
 const fs = require('fs');
 
 const client = new Client({
@@ -9,7 +9,8 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers
-    ]
+    ],
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction, Partials.User, Partials.GuildMember]
 });
 
 client.commands = new Collection();
@@ -28,6 +29,16 @@ for (const file of commandFiles) {
 client.on(Events.MessageCreate, async (message) => {
     const messageCreateEvent = require('./events/messageCreate');
     await messageCreateEvent.execute(message, client);
+});
+
+client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
+    const messageUpdateEvent = require('./events/messageUpdate');
+    await messageUpdateEvent.execute(oldMessage, newMessage, client);
+});
+
+client.on(Events.MessageDelete, async (message) => {
+    const messageDeleteEvent = require('./events/messageDelete');
+    await messageDeleteEvent.execute(message, client);
 });
 
 // Handle Interactions

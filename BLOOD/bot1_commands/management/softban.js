@@ -119,6 +119,8 @@ module.exports = {
             }
 
             // If options were provided via command directly
+            await interaction.deferReply();
+
             setSoftbanConfig(interaction.guildId, honeypotChannel.id, logChannel.id);
             await sendHoneypotWarning(honeypotChannel.id);
             
@@ -132,7 +134,7 @@ module.exports = {
                 )
                 .setTimestamp();
             
-            await interaction.reply({ embeds: [embed] });
+            await interaction.editReply({ embeds: [embed] });
 
         } else if (action === 'off') {
             disableSoftban(interaction.guildId);

@@ -32,11 +32,13 @@ function loadCommands(dir) {
             loadCommands(fullPath);
         } else if (file.endsWith('.js')) {
             const command = require(fullPath);
-            bot1.commands.set(command.data.name, command);
-            if (command.data.toJSON) {
-                commandsData.push(command.data.toJSON());
-            } else {
-                commandsData.push(command.data);
+            if (command && command.data && command.data.name) {
+                bot1.commands.set(command.data.name, command);
+                if (command.data.toJSON) {
+                    commandsData.push(command.data.toJSON());
+                } else {
+                    commandsData.push(command.data);
+                }
             }
         }
     }
@@ -112,6 +114,8 @@ bot1.on("interactionCreate", async (interaction) => {
     try {
         const { handleReminderInteractions } = require('./utils/reminderInteractions.js');
         if (await handleReminderInteractions(interaction)) return;
+
+
 
         if (interaction.isChatInputCommand()) {
             const command = bot1.commands.get(interaction.commandName);
@@ -274,16 +278,6 @@ bot1.on("interactionCreate", async (interaction) => {
                 return;
             }
 
-            if (id.startsWith('cmd_info_') || id.startsWith('staff_cmd_') || id.startsWith('admin_cmd_')) {
-                const { getDetailEmbed, getBannerFiles } = require('./utils/data.js');
-                const selectedCmd = interaction.values[0];
-                await interaction.reply({
-                    embeds: [getDetailEmbed(selectedCmd)],
-                    files: getBannerFiles(),
-                    ephemeral: true
-                });
-                return;
-            }
 
         } else if (interaction.isButton()) {
             const id = interaction.customId;
@@ -410,7 +404,9 @@ ${getEmoji('yarrow')} **Ticket Conduct — Before Claiming:** You are NOT suppos
 
 ${getEmoji('yarrow')} **Ticket Conduct — After Claiming:** Once you claim a ticket, no other staff may interfere unless you tag and assign them. Admins/Owners can step in at any time — if they do, tag them and ask them in staff chat not in that ticket: "Can I continue with this ticket?" and proceed based on their reply.
 
-${getEmoji('parrow')} **Player Tickets:** If a player needs a clan, check clan needs using \`;compo all\` in the staff bot room. Guide them to a suitable clan. Ask them to follow the steps and link their account to Clash King bot using \`/link\`. After review, use \`/approve\` or \`/decline\`.
+${getEmoji('parrow')} **Player History Check:** After a player submits their application, you **MUST** check their Chocolate Clash history using \`?check #playertag\`. Verify their profile, check their clan history, and ensure they are not a banned player. Take a screenshot of the Chocolate Clash page as proof.
+
+${getEmoji('parrow')} **Player Tickets & Clan Assignment:** If a player needs a clan, check clan needs using \`;compo all\` in the staff bot room. Guide them to a suitable clan. Ask them to follow the steps and link their account to Clash King bot using \`/link\`. After assigning, update the recruitment count using \`/edit-recruitment clan: <clan>\`. After review, use \`/approve\` or \`/decline\`.
 
 ${getEmoji('rarroww')} **Alliance & Rep Tickets:** For clans wanting to join the alliance or users applying for Rep, ask them to follow the required steps and tag admins.
 
@@ -571,6 +567,23 @@ bot1.on('guildMemberAdd', async (member) => {
 bot1.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
+    if (message.content.toLowerCase() === ';reqs') {
+        const command = bot1.commands.get('reqs');
+        if (command) {
+            const mockInteraction = {
+                reply: async (data) => message.reply(data),
+                guild: message.guild,
+                user: message.author,
+                member: message.member
+            };
+            try {
+                await command.execute(mockInteraction);
+            } catch (err) {
+                console.error("Error executing ;reqs:", err);
+            }
+            return;
+        }
+    }
 
     const { getSoftbanConfig } = require('./utils/softbanManager.js');
     const { getEmoji } = require('./utils/botemoji.js');
