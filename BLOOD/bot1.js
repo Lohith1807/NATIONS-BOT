@@ -4,7 +4,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const { getBannerFiles } = require('./utils/data.js');
 
-const BOT1_TOKEN     = process.env.BOT1_TOKEN || process.env.DISCORD_TOKEN;
+const BOT1_TOKEN = process.env.BOT1_TOKEN || process.env.DISCORD_TOKEN;
 const BOT1_CLIENT_ID = "1509906435402760202";
 
 const bot1 = new Client({
@@ -48,7 +48,7 @@ loadCommands(commandsPath);
 
 bot1.once("ready", async () => {
     console.log(`✅ [Bot1] ${bot1.user.tag} is online`);
-    
+
     bot1.user.setPresence({
         status: "dnd",
         activities: [
@@ -80,7 +80,7 @@ bot1.once("ready", async () => {
     try {
         const cron = require('node-cron');
         const { EmbedBuilder } = require('discord.js');
-        
+
         cron.schedule('0 8 */6 * *', async () => {
             const endDate = new Date('2026-06-30T00:00:00+05:30');
             if (new Date() > endDate) return;
@@ -94,7 +94,7 @@ bot1.once("ready", async () => {
                         .setTitle('🔔 TAU Token Update Reminder')
                         .setDescription(`<@${targetUserId}> Please update the TAU TOKEN FOR TELEGRAM BOT.\n\n*This is an automated reminder.*`)
                         .setTimestamp();
-                    
+
                     await targetUser.send({ content: `<@${targetUserId}>`, embeds: [embed] });
                     console.log(`✅ [Bot1] Sent scheduled TAU Token reminder to ${targetUser.tag}`);
                 }
@@ -128,6 +128,79 @@ bot1.on("interactionCreate", async (interaction) => {
             }
         } else if (interaction.isModalSubmit()) {
             const id = interaction.customId;
+
+            if (id.startsWith('workflow_modal:')) {
+                await interaction.deferReply({ ephemeral: true });
+                const action = id.split(':')[1];
+                const roleName = interaction.fields.getTextInputValue('role_name');
+                const raw1 = interaction.fields.getTextInputValue('workflow_content_1');
+                let raw2 = "";
+                try { raw2 = interaction.fields.getTextInputValue('workflow_content_2'); } catch (e) { }
+                let raw3 = "";
+                try { raw3 = interaction.fields.getTextInputValue('workflow_content_3'); } catch (e) { }
+
+                const { getEmoji } = require('./utils/botemoji.js');
+                const { addWorkflow } = require('./utils/workflowManager.js');
+
+                // Only 2 arrows: arrow and parrow
+                const arrows = [getEmoji('arrow'), getEmoji('parrow')];
+
+                const rawContents = [];
+                const formattedContents = [];
+
+                [raw1, raw2, raw3].forEach(raw => {
+                    if (raw && raw.trim() !== '') {
+                        rawContents.push(raw);
+                        const lines = raw.split('\n');
+                        let formatted = '';
+                        let emojiIndex = 0;
+                        
+                        lines.forEach((line) => {
+                            if (line.trim() === '') {
+                                formatted += '\n';
+                                return;
+                            }
+                            
+                            if (line.trim().startsWith('#') || line.trim().match(/^---+$/)) {
+                                formatted += `${line}\n`;
+                                return;
+                            }
+                            
+                            const emoji = arrows[emojiIndex % 2];
+                            let addedEmoji = false;
+                            
+                            if (line.match(/^\s*[\*\-]\s+/)) {
+                                formatted += line.replace(/^(\s*)[\*\-]\s+/, `$1${emoji} `) + '\n\n';
+                                addedEmoji = true;
+                            }
+                            else if (line.match(/^\s*\d+\.\s+/)) {
+                                formatted += line.replace(/^(\s*)/, `$1${emoji} `) + '\n\n';
+                                addedEmoji = true;
+                            }
+                            else {
+                                formatted += `${line.replace(/^(\s*)/, `$1${emoji} `)}\n\n`;
+                                addedEmoji = true;
+                            }
+                            
+                            if (addedEmoji) emojiIndex++;
+                        });
+                        
+                        formattedContents.push(formatted.trim());
+                    }
+                });
+
+                const workflowData = {
+                    rawContents,
+                    formattedContents
+                };
+
+                addWorkflow(roleName, workflowData);
+
+                return interaction.editReply({
+                    content: `${getEmoji('gtick')} Successfully ${action === 'edit' ? 'updated' : 'added'} the workflow for **${roleName}**.`
+                });
+            }
+
             if (id.startsWith('make_announcement_modal:')) {
                 await interaction.deferReply({ ephemeral: true });
                 const parts = id.split(':');
@@ -139,13 +212,13 @@ bot1.on("interactionCreate", async (interaction) => {
                     return interaction.editReply({ content: "❌ Target channel not found." });
                 }
                 const text = interaction.fields.getTextInputValue('announcement_text');
-                
+
                 // Process emojis
                 const { getEmoji, processEmojis } = require('./utils/botemoji.js');
                 const { EmbedBuilder } = require('discord.js');
-                
+
                 const processedText = processEmojis(text);
-                
+
                 const announceImagePath = path.join(__dirname, './bot1_commands/utility/baannounce.png');
                 const files = [];
                 if (sendImage && fs.existsSync(announceImagePath)) {
@@ -191,7 +264,7 @@ bot1.on("interactionCreate", async (interaction) => {
                 if (!channel) {
                     return interaction.editReply({ content: "❌ Target channel not found." });
                 }
-                
+
                 try {
                     const targetMessage = await channel.messages.fetch(messageId);
                     if (!targetMessage) {
@@ -200,13 +273,13 @@ bot1.on("interactionCreate", async (interaction) => {
                     if (targetMessage.author.id !== interaction.client.user.id) {
                         return interaction.editReply({ content: "❌ I cannot edit a message not sent by me." });
                     }
-                    
+
                     const text = interaction.fields.getTextInputValue('announcement_text');
                     const { getEmoji, processEmojis } = require('./utils/botemoji.js');
                     const { EmbedBuilder } = require('discord.js');
-                    
+
                     const processedText = processEmojis(text);
-                    
+
                     const announceImagePath = path.join(__dirname, './bot1_commands/utility/baannounce.png');
                     const files = [];
                     if (fs.existsSync(announceImagePath)) {
@@ -273,15 +346,134 @@ bot1.on("interactionCreate", async (interaction) => {
                             .setTimestamp()
                             .setFooter({ text: 'Blood Alliance' });
                         await creator.send({ embeds: [dmEmbed] });
-                    } catch (_) {}
+                    } catch (_) { }
                 }
+                return;
+            } else if (id === 'workflow_show_select') {
+                const roleName = interaction.values[0];
+                const { getWorkflow } = require('./utils/workflowManager.js');
+                const workflowData = getWorkflow(roleName);
+                if (!workflowData) return interaction.reply({ content: "Workflow not found.", ephemeral: true });
+
+                const { EmbedBuilder } = require('discord.js');
+
+                const embeds = [];
+                const formattedList = workflowData.formattedContents && workflowData.formattedContents.length > 0
+                    ? workflowData.formattedContents
+                    : [workflowData.formattedContent];
+
+                formattedList.forEach((formatted, index) => {
+                    const embed = new EmbedBuilder()
+                        .setColor('#2ecc71')
+                        .setDescription(formatted)
+                        .setFooter({ text: 'Blood Alliance Workflow Management' });
+
+                    if (index === 0) {
+                        embed.setTitle(`Staff Workflow: ${roleName}`);
+                    }
+                    embeds.push(embed);
+                });
+
+                // Sending public message
+                await interaction.channel.send({ embeds: embeds });
+                await interaction.update({ content: "Sent successfully!", embeds: [], components: [] });
+                return;
+            } else if (id === 'workflow_update_delete_select') {
+                const roleName = interaction.values[0];
+                const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`workflow_btn_edit:${roleName.substring(0, 80)}`)
+                        .setLabel('Update')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`workflow_btn_delete:${roleName.substring(0, 80)}`)
+                        .setLabel('Delete')
+                        .setStyle(ButtonStyle.Danger)
+                );
+                
+                const embed = new EmbedBuilder()
+                    .setColor('#3498db')
+                    .setTitle(`Update or Delete Workflow`)
+                    .setDescription(`You selected the workflow for **${roleName}**. What would you like to do with it?`);
+                    
+                await interaction.update({ content: '', embeds: [embed], components: [row] });
                 return;
             }
 
-
         } else if (interaction.isButton()) {
             const id = interaction.customId;
-            if (id === 'todo_update') {
+            if (id.startsWith('workflow_btn_edit:')) {
+                const roleName = id.replace('workflow_btn_edit:', '');
+                const { getWorkflow } = require('./utils/workflowManager.js');
+                const existingWorkflow = getWorkflow(roleName);
+                if (!existingWorkflow) return interaction.reply({ content: "Workflow not found.", ephemeral: true });
+
+                const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+                const modal = new ModalBuilder()
+                    .setCustomId(`workflow_modal:edit`)
+                    .setTitle('Edit Workflow');
+
+                const roleInput = new TextInputBuilder()
+                    .setCustomId('role_name')
+                    .setLabel('Role Name')
+                    .setStyle(TextInputStyle.Short)
+                    .setValue(roleName)
+                    .setRequired(true);
+
+                const raw1 = existingWorkflow.rawContents ? existingWorkflow.rawContents[0] || "" : (existingWorkflow.rawContent || "");
+                const raw2 = existingWorkflow.rawContents ? existingWorkflow.rawContents[1] || "" : "";
+                const raw3 = existingWorkflow.rawContents ? existingWorkflow.rawContents[2] || "" : "";
+
+                const workflowInput1 = new TextInputBuilder()
+                    .setCustomId('workflow_content_1')
+                    .setLabel('Workflow Part 1')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setValue(raw1)
+                    .setRequired(true);
+
+                const workflowInput2 = new TextInputBuilder()
+                    .setCustomId('workflow_content_2')
+                    .setLabel('Workflow Part 2 (Optional)')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setPlaceholder('If you need to expand different workflow in this role you can separate the texts here')
+                    .setRequired(false);
+                if (raw2) workflowInput2.setValue(raw2);
+
+                const workflowInput3 = new TextInputBuilder()
+                    .setCustomId('workflow_content_3')
+                    .setLabel('Workflow Part 3 (Optional)')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setPlaceholder('If you need to expand different workflow in this role you can separate the texts here')
+                    .setRequired(false);
+                if (raw3) workflowInput3.setValue(raw3);
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(roleInput),
+                    new ActionRowBuilder().addComponents(workflowInput1),
+                    new ActionRowBuilder().addComponents(workflowInput2),
+                    new ActionRowBuilder().addComponents(workflowInput3)
+                );
+                await interaction.showModal(modal);
+                return;
+            } else if (id.startsWith('workflow_btn_delete:')) {
+                const roleName = id.replace('workflow_btn_delete:', '');
+                const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`workflow_del_yes:${roleName.substring(0, 80)}`)
+                        .setLabel('Yes')
+                        .setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder()
+                        .setCustomId(`workflow_del_no`)
+                        .setLabel('No')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+                await interaction.update({ content: `Are you sure you want to delete the workflow for **${roleName}**?`, embeds: [], components: [row] });
+                return;
+            } else if (id === 'todo_update') {
                 if (!interaction.member || !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
                     return interaction.reply({ content: "❌ You need administrator permissions to update the list.", ephemeral: true });
                 }
@@ -307,6 +499,19 @@ bot1.on("interactionCreate", async (interaction) => {
                     embeds: [getCategoryHelpEmbed(page)],
                     components: [createCategoryButtons()]
                 });
+            } else if (id.startsWith('workflow_del_yes:')) {
+                const roleName = id.split(':')[1];
+                const { deleteWorkflow } = require('./utils/workflowManager.js');
+                const { getEmoji } = require('./utils/botemoji.js');
+
+                const success = deleteWorkflow(roleName);
+                if (success) {
+                    await interaction.update({ content: `${getEmoji('gtick')} Successfully deleted workflow for **${roleName}**.`, components: [] });
+                } else {
+                    await interaction.update({ content: `${getEmoji('bluex')} Workflow not found.`, components: [] });
+                }
+            } else if (id === 'workflow_del_no') {
+                await interaction.update({ content: "Deletion cancelled.", components: [] });
             }
         }
     } catch (err) {
@@ -315,14 +520,14 @@ bot1.on("interactionCreate", async (interaction) => {
             if (!interaction.replied && !interaction.deferred) {
                 await interaction.reply({ content: "❌ Something went wrong. Please try again.", ephemeral: true });
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 });
 
 bot1.on("guildMemberUpdate", async (oldMember, newMember) => {
     try {
         const STAFF_CHANNEL_ID = "1417528968294174740";
-        
+
         // Find newly added roles
         const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
         if (addedRoles.size === 0) return;
@@ -331,7 +536,7 @@ bot1.on("guildMemberUpdate", async (oldMember, newMember) => {
         const { EmbedBuilder } = require('discord.js');
 
         const STAFF_ROLES = {
-                "1153997630112792577": {
+            "1153997630112792577": {
                 name: "Admin",
                 emoji: "crown",
                 color: "#e74c3c",
@@ -465,7 +670,7 @@ bot1.on('inviteCreate', async (invite) => {
     const { invitesCache, getInviteConfig, fetchInviteSnapshot } = require('./utils/inviteManager.js');
     const config = getInviteConfig(invite.guild.id);
     if (!config || !config.enabled) return;
-    
+
     let cache = invitesCache.get(invite.guild.id);
     if (!cache) {
         try {
@@ -494,7 +699,7 @@ bot1.on('guildMemberAdd', async (member) => {
     const { invitesCache, getInviteConfig, fetchInviteSnapshot } = require('./utils/inviteManager.js');
     const { getEmoji } = require('./utils/botemoji.js');
     const { EmbedBuilder } = require('discord.js');
-    
+
     const config = getInviteConfig(member.guild.id);
     if (!config || !config.enabled || !config.channelId) return;
 
@@ -508,7 +713,7 @@ bot1.on('guildMemberAdd', async (member) => {
         const newInvites = await fetchInviteSnapshot(member.guild);
 
         let usedInvite = null;
-        
+
         for (const [code, newInv] of newInvites.entries()) {
             const cachedInv = cachedInvites.get(code);
             if (!cachedInv) {
@@ -605,8 +810,8 @@ bot1.on('messageCreate', async (message) => {
                 if (member) {
                     // Try to DM them BEFORE banning
                     try {
-                        const contactIdsStr = process.env.SOFTBAN_CONTACT_IDS 
-                            ? process.env.SOFTBAN_CONTACT_IDS.split(',').map(id => `<@${id.trim()}>`).join(' ') 
+                        const contactIdsStr = process.env.SOFTBAN_CONTACT_IDS
+                            ? process.env.SOFTBAN_CONTACT_IDS.split(',').map(id => `<@${id.trim()}>`).join(' ')
                             : 'the administrators';
 
                         const dmEmbed = new EmbedBuilder()
@@ -621,7 +826,7 @@ bot1.on('messageCreate', async (message) => {
 
                     // Ban and delete messages
                     await member.ban({ deleteMessageSeconds: 86400, reason: 'Soft-ban: Sent links/images in honeypot channel.' });
-                    
+
                     // Unban after 10 seconds
                     setTimeout(async () => {
                         try {
