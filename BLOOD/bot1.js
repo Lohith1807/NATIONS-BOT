@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection, REST, Routes, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, PermissionFlagsBits, AuditLogEvent } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
@@ -115,8 +115,8 @@ bot1.on("interactionCreate", async (interaction) => {
         const { handleReminderInteractions } = require('./utils/reminderInteractions.js');
         if (await handleReminderInteractions(interaction)) return;
 
-
-
+        const { handleBaseInteractions } = require('./utils/baseInteractions.js');
+        if (await handleBaseInteractions(interaction)) return;
         if (interaction.isChatInputCommand()) {
             const command = bot1.commands.get(interaction.commandName);
             if (!command) return;
@@ -154,21 +154,21 @@ bot1.on("interactionCreate", async (interaction) => {
                         const lines = raw.split('\n');
                         let formatted = '';
                         let emojiIndex = 0;
-                        
+
                         lines.forEach((line) => {
                             if (line.trim() === '') {
                                 formatted += '\n';
                                 return;
                             }
-                            
+
                             if (line.trim().startsWith('#') || line.trim().match(/^---+$/)) {
                                 formatted += `${line}\n`;
                                 return;
                             }
-                            
+
                             const emoji = arrows[emojiIndex % 2];
                             let addedEmoji = false;
-                            
+
                             if (line.match(/^\s*[\*\-]\s+/)) {
                                 formatted += line.replace(/^(\s*)[\*\-]\s+/, `$1${emoji} `) + '\n\n';
                                 addedEmoji = true;
@@ -181,10 +181,10 @@ bot1.on("interactionCreate", async (interaction) => {
                                 formatted += `${line.replace(/^(\s*)/, `$1${emoji} `)}\n\n`;
                                 addedEmoji = true;
                             }
-                            
+
                             if (addedEmoji) emojiIndex++;
                         });
-                        
+
                         formattedContents.push(formatted.trim());
                     }
                 });
@@ -392,12 +392,12 @@ bot1.on("interactionCreate", async (interaction) => {
                         .setLabel('Delete')
                         .setStyle(ButtonStyle.Danger)
                 );
-                
+
                 const embed = new EmbedBuilder()
                     .setColor('#3498db')
                     .setTitle(`Update or Delete Workflow`)
                     .setDescription(`You selected the workflow for **${roleName}**. What would you like to do with it?`);
-                    
+
                 await interaction.update({ content: '', embeds: [embed], components: [row] });
                 return;
             }
@@ -609,15 +609,14 @@ ${getEmoji('yarrow')} **Ticket Conduct — Before Claiming:** You are NOT suppos
 
 ${getEmoji('yarrow')} **Ticket Conduct — After Claiming:** Once you claim a ticket, no other staff may interfere unless you tag and assign them. Admins/Owners can step in at any time — if they do, tag them and ask them in staff chat not in that ticket: "Can I continue with this ticket?" and proceed based on their reply.
 
-${getEmoji('parrow')} **Player History Check:** After a player submits their application, you **MUST** check their Chocolate Clash history using \`?check #playertag\`. Verify their profile, check their clan history, and ensure they are not a banned player. Take a screenshot of the Chocolate Clash page as proof.
+${getEmoji('parrow')} **Player Ticket:** For FWA entry: After a user submits their application, there is an attached "Check" button. Click on that and check for the submitted ID. Then use "Approve" or "Reject". Submission proof screenshot isn't important here, but in the reason mention correctly (e.g., if a person is from BL clans but not banned, write "Player from BL Clans But he isnt banned"). For war entry and other tickets: Only approve or reject will be available, but only after submitting the applications it comes. If at any cost these aren't working, then try manually by using commands like before.
 
-${getEmoji('parrow')} **Player Tickets & Clan Assignment:** If a player needs a clan, check clan needs using \`;compo all\` in the staff bot room. Guide them to a suitable clan. Ask them to follow the steps and link their account to Clash King bot using \`/link\`. After assigning, update the recruitment count using \`/edit-recruitment clan: <clan>\`. After review, use \`/approve\` or \`/decline\`.
+${getEmoji('parrow')} **Clan Assignment:** If a player needs a clan, check clan needs using \`;compo all\` in the staff bot room. Guide them to a suitable clan. Ask them to follow the steps and link their account to Clash King bot using \`/link\`. After assigning, update the recruitment count using \`/edit-recruitment clan: <clan>\`.
+${getEmoji('rarroww')} **Alliance & Rep Tickets:** For clans wanting to join the alliance or users applying for Rep, ask them to follow the required steps and tag Mod or Admin.
 
-${getEmoji('rarroww')} **Alliance & Rep Tickets:** For clans wanting to join the alliance or users applying for Rep, ask them to follow the required steps and tag admins.
+${getEmoji('yarrow')} **Help & Query Tickets:** Ask about their problem and try to solve it. If unable to help, tag a Server Moderator or Admin.Only React when The Welcomer and help assistance staff isnt online.
 
-${getEmoji('yarrow')} **Help & Query Tickets:** Ask about their problem and try to solve it. If unable to help, tag a Server Moderator or Admin.
-
-${getEmoji('rarroww')} **Staff & Rep Applications:** Ensure applicants have filled all details completely, then ping an Admin.`
+${getEmoji('rarroww')} **Staff & Rep Applications:** Ensure applicants have filled all details completely, then ping an Mod.`
             },
             "1480823475525517415": {
                 name: "Server HR",
@@ -772,6 +771,19 @@ bot1.on('guildMemberAdd', async (member) => {
 bot1.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
+    if (message.content.includes('@everyone') || message.mentions.everyone) {
+        if (message.member && !message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            try {
+                await message.delete().catch(() => { });
+                await message.member.timeout(60 * 1000, 'Pinged @everyone role').catch(() => { });
+                await message.author.send('you have pinged @everyone role so you got muted for a min').catch(() => { });
+                return;
+            } catch (err) {
+                console.error('Error handling everyone ping:', err);
+            }
+        }
+    }
+
     if (message.content.toLowerCase() === ';reqs') {
         const command = bot1.commands.get('reqs');
         if (command) {
@@ -790,9 +802,13 @@ bot1.on('messageCreate', async (message) => {
         }
     }
 
+    // Auto convert messages with Clash of Clans base link + image attachment
+    const { handleAutoBaseMessage } = require('./utils/baseAutoConverter.js');
+    if (await handleAutoBaseMessage(message)) return;
+
     const { getSoftbanConfig } = require('./utils/softbanManager.js');
     const { getEmoji } = require('./utils/botemoji.js');
-    const { EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+    const { EmbedBuilder } = require('discord.js');
 
     const config = getSoftbanConfig(message.guild.id);
     if (config && config.enabled && config.honeypotChannelId === message.channel.id) {
@@ -803,7 +819,40 @@ bot1.on('messageCreate', async (message) => {
         const hasLinks = /(https?:\/\/[^\s]+|discord\.gg\/[^\s]+|discord\.com\/invite\/[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\/[^\s]*)?)/gi.test(message.content);
         const hasAttachments = message.attachments.size > 0;
 
-        if (hasLinks || hasAttachments) {
+        if (hasAttachments) {
+            try {
+                const member = await message.guild.members.fetch(message.author.id);
+                if (member) {
+                    try {
+                        const dmEmbed = new EmbedBuilder()
+                            .setColor('#E74C3C')
+                            .setTitle('⚠️ Muted')
+                            .setDescription(`Your messages in the honeypot channel triggered our spam protection.\n\nYou have been muted for 1 hour for sending images.`)
+                            .setFooter({ text: 'Blood Alliance' });
+                        await member.send({ embeds: [dmEmbed] });
+                    } catch (e) {
+                        console.log(`Could not send DM to ${member.user.tag}`);
+                    }
+
+                    await member.timeout(60 * 60 * 1000, 'Sent images in honeypot channel.');
+                    try {
+                        await message.delete();
+                    } catch (e) { }
+
+                    const logChannel = message.guild.channels.cache.get(config.logChannelId);
+                    if (logChannel) {
+                        const embed = new EmbedBuilder()
+                            .setColor('#E74C3C')
+                            .setTitle(`${getEmoji('bluex')} User Muted`)
+                            .setDescription(`**User:** ${message.author.tag} (<@${message.author.id}>)\n**Action:** Muted for 1 hour & message deleted.\n**Reason:** Sent image in honeypot channel <#${config.honeypotChannelId}>.`)
+                            .setTimestamp();
+                        await logChannel.send({ embeds: [embed] });
+                    }
+                }
+            } catch (err) {
+                if (err.code !== 50013) console.error('Failed to mute user:', err);
+            }
+        } else if (hasLinks) {
             try {
                 // Soft ban logic: Ban and delete messages (86400 seconds = 1 day)
                 const member = await message.guild.members.fetch(message.author.id);
@@ -825,7 +874,7 @@ bot1.on('messageCreate', async (message) => {
                     }
 
                     // Ban and delete messages
-                    await member.ban({ deleteMessageSeconds: 86400, reason: 'Soft-ban: Sent links/images in honeypot channel.' });
+                    await member.ban({ deleteMessageSeconds: 86400, reason: 'Soft-ban: Sent links in honeypot channel.' });
 
                     // Unban after 10 seconds
                     setTimeout(async () => {
@@ -841,7 +890,7 @@ bot1.on('messageCreate', async (message) => {
                         const embed = new EmbedBuilder()
                             .setColor('#E74C3C')
                             .setTitle(`${getEmoji('bluex')} User Soft-Banned`)
-                            .setDescription(`**User:** ${message.author.tag} (<@${message.author.id}>)\n**Action:** Banned & messages deleted, unbanned after 10s.\n**Reason:** Sent link/image in honeypot channel <#${config.honeypotChannelId}>.`)
+                            .setDescription(`**User:** ${message.author.tag} (<@${message.author.id}>)\n**Action:** Banned & messages deleted, unbanned after 10s.\n**Reason:** Sent link in honeypot channel <#${config.honeypotChannelId}>.`)
                             .setTimestamp();
                         await logChannel.send({ embeds: [embed] });
                     }
@@ -859,5 +908,7 @@ bot1.on('messageCreate', async (message) => {
         }
     }
 });
+
+require('./utils/roleUpdateMonitor.js').setupRoleUpdateMonitor(bot1);
 
 bot1.login(BOT1_TOKEN);

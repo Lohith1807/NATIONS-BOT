@@ -72,7 +72,7 @@ module.exports = {
 
         // Tag user and display the change message
         await newMessage.channel.send({
-            content: `<@${author.id}> this guy changed changed number from ${oldNumber} to ${displayNewNumber}\n\nnext number is : ${nextNumber}`
+            content: `<@${author.id}> edited their message! They changed the old number **${oldNumber}** to **${displayNewNumber}**.\nThe next number is: **${nextNumber}**`
         }).catch(() => {});
     }
 };

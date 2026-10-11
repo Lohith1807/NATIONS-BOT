@@ -79,8 +79,10 @@ ${getEmoji('yarrow')} **Ticket Conduct — After Claiming:**
 > ${getEmoji('parrow')} **Exception:** Admins and Server Owners can step into any ticket at any time. If an Admin or Owner joins your active ticket in the staff room, tag them and ask: *"Can I continue with this ticket?"* and proceed based on their reply.
 
 ${getEmoji('parrow')} **Player History Check:**
-> ${getEmoji('rarroww')} After a player submits their application, you **MUST** check their Chocolate Clash history using \`?check #playertag\`.
-> ${getEmoji('parrow')} Verify their profile, check their clan history, and ensure they are not a banned player. Take a screenshot of the Chocolate Clash page as proof.
+> ${getEmoji('rarroww')} For FWA entry: After a user submits their application, there is an attached "Check" button. Click on that and check for the submitted ID. Then use "Approve" or "Reject".
+> ${getEmoji('parrow')} Submission proof screenshot isn't important here, but in the reason mention correctly (e.g., if a person is from BL clans but not banned, write "Player from BL Clans But he isnt banned").
+> ${getEmoji('rarroww')} For war entry and other tickets: Only approve or reject will be available, but only after submitting the applications it comes.
+> ${getEmoji('parrow')} If at any cost these aren't working, then try manually by using commands like before.
 
 ${getEmoji('rarroww')} **Clan Assignment:** Assign recruits based on requirements in the recruitment channel (https://discord.com/channels/1153720899715993681/1503298102860320829). After assigning, you **MUST** update the requirement count using \`/edit-recruitment clan: <clan>\`. (e.g., if they need 5 TH18s and you assign 2, change the count to 3). Accurate counts are mandatory! After review, use \`/approve\` or \`/decline\`.
 

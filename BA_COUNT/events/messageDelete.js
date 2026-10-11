@@ -23,9 +23,9 @@ module.exports = {
 
         let content = '';
         if (author) {
-            content = `<@${author.id}> this guy deleted number ${deletedNumber}\n\nnext number is : ${nextNumber}`;
+            content = `<@${author.id}> deleted their message!\nThe old number was **${deletedNumber}**.\nThe next number is: **${nextNumber}**`;
         } else {
-            content = `Someone deleted the number ${deletedNumber}\n\nnext number is : ${nextNumber}`;
+            content = `Someone deleted the number **${deletedNumber}**.\nThe next number is: **${nextNumber}**`;
         }
 
         await message.channel.send({ content }).catch(() => {});

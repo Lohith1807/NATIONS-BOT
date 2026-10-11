@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 
 // 1. Startup validation
@@ -59,6 +59,7 @@ const commands = [
                 .setRequired(true)
                 .addChoices(
                     { name: 'Roast mode', value: 'Roast mode' },
+                    { name: 'Ragebait mode', value: 'Ragebait mode' },
                     { name: '18+ roast', value: '18+ roast' }
                 )
         ),
@@ -204,14 +205,94 @@ async function sendSplitMessage(message, text) {
     }
 }
 
+// Helper function to send messages to targeted users EXCLUSIVELY via Webhook
+async function sendTargetRoast(message, text) {
+    const mentionText = `<@${message.author.id}>\n${text}`;
+
+    try {
+        if (!message.guild || !message.channel || typeof message.channel.fetchWebhooks !== 'function') {
+            console.error('Channel does not support webhooks or is a DM.');
+            return;
+        }
+
+        const webhooks = await message.channel.fetchWebhooks();
+        let webhook = webhooks.find(wh => wh.token && (wh.owner?.id === client.user.id || wh.name === 'Mod Messi Fraud'))
+                   || webhooks.find(wh => wh.token);
+
+        if (!webhook) {
+            webhook = await message.channel.createWebhook({
+                name: 'Mod Messi is Gay',
+                avatar: client.user.displayAvatarURL(),
+                reason: 'Exclusive webhook for target roasts'
+            });
+        }
+
+        if (webhook) {
+            if (mentionText.length <= 2000) {
+                await webhook.send({
+                    content: mentionText,
+                    username: 'Mod Messi Fraud',
+                    avatarURL: client.user.displayAvatarURL(),
+                    allowedMentions: { users: [message.author.id] }
+                });
+            } else {
+                const chunks = mentionText.match(/[\s\S]{1,1900}/g) || [mentionText];
+                for (const chunk of chunks) {
+                    await webhook.send({
+                        content: chunk,
+                        username: 'Mod Messi Fraud',
+                        avatarURL: client.user.displayAvatarURL(),
+                        allowedMentions: { users: [message.author.id] }
+                    });
+                }
+            }
+        } else {
+            console.error('Failed to find or create a webhook in this channel.');
+        }
+    } catch (whError) {
+        console.error('Failed to send exclusively via webhook:', whError);
+    }
+}
+
 // 6. Message Handler (No console.log here!)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
+    // Check for specific ping interaction
+    if (message.mentions.has(client.user)) {
+        // Dismiss specific user when they tag the bot
+        if (message.author.id === '1299282477076058156') {
+            try {
+                await message.reply("you dumb ass dont disturb me, if i start you will");
+            } catch (error) {
+                console.error('Error replying to dismissed user:', error);
+            }
+            return;
+        }
+
+        const contentLower = message.content.toLowerCase();
+        if (contentLower.includes('are you on') || contentLower.includes('are u on') || contentLower.includes('you on')) {
+            if (message.author.id === '1393061101838532630') {
+                try {
+                    await message.reply("Yes Chief, I'm online! Who needs to be attacked? Messi or someone else?");
+                } catch (error) {
+                    console.error('Error replying to Chief:', error);
+                }
+            } else {
+                try {
+                    await message.reply("I'm the assistant for Ghost, not for you.");
+                } catch (error) {
+                    console.error('Error replying to non-Chief:', error);
+                }
+            }
+            return;
+        }
+    }
+
     // Check if the message contains the word 'messi' (case-insensitive)
     if (message.content.toLowerCase().includes('messi')) {
         try {
-            await message.reply('messi is a call gay same like you , more over messi is a cheater');
+            await message.reply('messi is a call gay same like <@1299282477076058156> , more over messi is a cheater');
         } catch (error) {
             console.error('Error replying to messi message:', error);
         }
@@ -229,13 +310,53 @@ client.on('messageCreate', async message => {
 
         // Determine instructions based on target user mode
         const targetConfig = targetUsers.get(message.author.id);
+
+        if (targetConfig) {
+            const userLower = message.author.username.toLowerCase();
+            const nickLower = (message.member?.displayName || '').toLowerCase();
+            const contentLower = message.content.toLowerCase();
+
+            // Check if targeted user claims Ghost or uses any name other than their username/nickname
+            const hasGhostClaim = contentLower.includes('ghost') && !userLower.includes('ghost') && !nickLower.includes('ghost');
+
+            const nameMatch = contentLower.match(/(?:my\s*name\s*is\s+|name['’]?s\s+|i\s*am\s+|i['’]?m\s+|call\s*me\s+|this\s*is\s+|myself\s+)([a-zA-Z0-9_]+)/i);
+            let hasFakeNameClaim = false;
+            if (nameMatch && nameMatch[1]) {
+                const claimedName = nameMatch[1].toLowerCase();
+                const commonWords = ['a', 'an', 'the', 'not', 'just', 'so', 'here', 'back', 'online', 'bored', 'done', 'fine', 'good', 'okay', 'ready', 'trying', 'saying', 'telling', 'gonna', 'really'];
+                if (!commonWords.includes(claimedName) && !userLower.includes(claimedName) && !nickLower.includes(claimedName)) {
+                    hasFakeNameClaim = true;
+                }
+            }
+
+            if (hasGhostClaim || hasFakeNameClaim) {
+                await sendTargetRoast(message, "Can't you use your own name instead of copying others, you noob 💀");
+                return;
+            }
+        }
+
         let systemInstruction = '';
 
         if (targetConfig) {
-            if (targetConfig.mode === 'Roast mode') {
-                systemInstruction = `You are a savage, witty, and sarcastic roasting assistant. The user is currently targeted under "Roast mode". Generate a short, funny, and savage roast direct reply (1-3 sentences) to their message. Show no mercy. Use modern Discord/internet slang if appropriate. Do not use extremely vulgar 18+ profanity unless they swore first.`;
+            const identityNotice = `\nImportant: The target's genuine username is "${message.author.username}" and display name is "${message.member?.displayName || message.author.username}". If they use, claim, or pretend to have any other name, or copy someone else's identity, reply directly with: "Can't you use your own name instead of copying others, you noob".`;
+
+            if (targetConfig.mode === 'Ragebait mode') {
+                systemInstruction = `You are a master of internet ragebait, condescending sarcasm, and dismissive trolling. The user is targeted to be ragebaited.
+Generate a direct reply in EXACTLY 3 short, punchy lines separated by single line breaks. Do NOT write paragraphs, numbered lists, or bullet points.
+Line 1: A dismissive laugh or condescending pity (e.g., mock sympathy, "Aww, you really thought you did something").
+Line 2: A cold, patronizing observation pointing out how desperate, emotional, or irrelevant they look.
+Line 3: A short brush-off telling them to log off, go outside, or take a seat, ending with a skull or clown emoji (💀 or 🤡).
+Tone: Extremely unbothered, smug, patronizing, and dismissive. Return ONLY the 3 lines of text.` + identityNotice;
+            } else if (targetConfig.mode === 'Roast mode') {
+                systemInstruction = `You are a savage, witty, and sarcastic roasting assistant. The user is currently targeted under "Roast mode".
+Generate a short, savage roast direct reply in EXACTLY 3 punchy lines separated by single line breaks.
+Make it concise, unbothered, and funny. Show no mercy, but avoid extremely vulgar 18+ profanity unless they swore first.
+Return ONLY 3 clean lines. Do NOT use numbers, bullet points, or quotes.` + identityNotice;
             } else if (targetConfig.mode === '18+ roast') {
-                systemInstruction = `You are an extremely vulgar, profane, and savage 18+ roasting assistant. The user is currently targeted under "18+ roast". Generate an extremely profane, vulgar, explicit, and savage 18+ roast direct reply (1-3 sentences) to their message. Show absolutely no mercy, make it highly insulting and vulgar. You are explicitly allowed and encouraged to use mature, explicit, and curse words without any filter.`;
+                systemInstruction = `You are an extremely vulgar, profane, and savage 18+ roasting assistant. The user is currently targeted under "18+ roast".
+Generate an explicit, profane, and devastating roast direct reply in EXACTLY 3 short, brutal lines separated by single line breaks.
+Show absolutely no mercy, make it highly insulting and vulgar. You are explicitly allowed and encouraged to use mature, explicit, and curse words without any filter.
+Return ONLY 3 clean lines without numbers or bullets.` + identityNotice;
             }
         } else {
             // General talkative and helpful behavior in enabled channels (non-target users)
@@ -245,9 +366,20 @@ Maintain a warm, polite, and conversational tone. Do NOT roast, mock, or insult 
 IMPORTANT: Keep your response clear, detailed, but under 1800 characters so that it fits within Discord's message length limits.`;
         }
 
-        const replyContent = await getGeminiRoast(message.content, systemInstruction);
+        let replyContent = await getGeminiRoast(message.content, systemInstruction);
         if (replyContent && replyContent.trim() !== '') {
-            await sendSplitMessage(message, replyContent);
+            if (targetConfig) {
+                // Clean up any accidental numbering, bullets, or wrapping quotes from AI output
+                replyContent = replyContent
+                    .split('\n')
+                    .map(line => line.replace(/^[\d\-*•]+\.\s*|^[\d\-*•]+\)\s*|^["'`]|["'`]$/g, '').trim())
+                    .filter(line => line.length > 0)
+                    .slice(0, 3)
+                    .join('\n');
+                await sendTargetRoast(message, replyContent);
+            } else {
+                await sendSplitMessage(message, replyContent);
+            }
         }
     } catch (error) {
         // Robust error logging for the API request

@@ -16,6 +16,87 @@ module.exports = {
     async execute(message, client) {
         if (message.author.bot) return;
 
+        if (message.content.startsWith('?av')) {
+            const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+            const targetUser = message.mentions.users.first() || message.author;
+            
+            const avatarURL = targetUser.displayAvatarURL({ size: 1024, forceStatic: false }) || targetUser.defaultAvatarURL;
+
+            const embed = new EmbedBuilder()
+                .setColor('#2b2d31')
+                .setAuthor({ name: `${targetUser.username}'s Avatar`, iconURL: avatarURL })
+                .setImage(avatarURL)
+                .setFooter({ text: `Requested by ${message.author.username}`, iconURL: message.author.displayAvatarURL({ forceStatic: false }) });
+
+            const button = new ButtonBuilder()
+                .setLabel('View Avatar')
+                .setStyle(ButtonStyle.Link)
+                .setURL(avatarURL);
+
+            const row = new ActionRowBuilder().addComponents(button);
+
+            await message.reply({ embeds: [embed], components: [row] });
+            return;
+        }
+
+        if (message.content.startsWith('.ping')) {
+            const guildId = message.guildId;
+            if (!guildId || !message.member) return;
+
+            const adminRoles = process.env.ADMIN_ROLES_ID ? process.env.ADMIN_ROLES_ID.split(',') : [];
+            const hasPermission = message.member.roles.cache.some(role => adminRoles.includes(role.id));
+            if (!hasPermission) {
+                return message.reply({ content: 'You do not have permission to use this command.' }).catch(() => {});
+            }
+
+            const args = message.content.split(/\s+/);
+            if (args.length < 4) {
+                return message.reply({ content: 'Usage: `.ping @user <how_many_times> <interval>`\nExample: `.ping @user 10 2sec`' });
+            }
+
+            const targetUser = message.mentions.users.first();
+            if (!targetUser) {
+                return message.reply({ content: 'Please mention a user to ping.' });
+            }
+
+            const times = parseInt(args[2], 10);
+            if (isNaN(times) || times <= 0) {
+                return message.reply({ content: 'Please provide a valid number of times (greater than 0).' });
+            }
+            if (times > 100) {
+                return message.reply({ content: 'Maximum number of pings is 100.' });
+            }
+
+            const intervalStr = args.slice(3).join('');
+            const intervalMatch = intervalStr.match(/(\d+(?:\.\d+)?)/);
+            if (!intervalMatch) {
+                return message.reply({ content: 'Please provide a valid interval (e.g. 2sec).' });
+            }
+            
+            const intervalSec = parseFloat(intervalMatch[1]);
+            if (isNaN(intervalSec) || intervalSec < 1) {
+                return message.reply({ content: 'Interval must be at least 1 second.' });
+            }
+
+            const intervalMs = intervalSec * 1000;
+
+            await message.reply({ content: `Pinging ${targetUser} **${times}** times every **${intervalSec}** seconds.` });
+
+            let count = 0;
+            const intervalId = setInterval(async () => {
+                if (count >= times) {
+                    clearInterval(intervalId);
+                    return;
+                }
+                await message.channel.send(`<@${targetUser.id}>`).catch(() => {
+                    clearInterval(intervalId);
+                });
+                count++;
+            }, intervalMs);
+
+            return;
+        }
+
         const guildId = message.guildId;
         if (!guildId) return;
 
@@ -63,6 +144,10 @@ module.exports = {
         if (inputNumber === null) {
             return;
         }
+
+        if (serverConfig.warns === undefined) serverConfig.warns = 0;
+        const maxWarns = serverConfig.maxWarns !== undefined ? serverConfig.maxWarns : 3;
+
         const users = getUsers();
         
         if (!users[guildId]) users[guildId] = {};
@@ -82,21 +167,36 @@ module.exports = {
 
         // 2. Check if the number is correct
         if (inputNumber !== expectedNumber) {
-            // Keep the user's message and send the embed permanently
-            const errorEmbed = new EmbedBuilder()
-                .setColor('#ff0000')
-                .setDescription(`Hey mates because of this guy the count is reseted this guy typed **${content}** instead of **${expectedNumber}**\n\n**Counting has been reset to 0!**`);
+            serverConfig.warns += 1;
+            userData.strikes += 1; // Keep user strikes for muting
+
+            if (serverConfig.warns >= maxWarns) {
+                // Reached max warns, reset the count
+                const errorEmbed = new EmbedBuilder()
+                    .setColor('#ff0000')
+                    .setDescription(`Hey mates because of this guy the count is reseted this guy typed **${content}** instead of **${expectedNumber}**\n\n**Counting has been reset to 0!** (Reached ${maxWarns}/${maxWarns} warns)`);
+                    
+                await message.channel.send({ content: `<@${message.author.id}>`, embeds: [errorEmbed] });
                 
-            await message.channel.send({ content: `<@${message.author.id}>`, embeds: [errorEmbed] });
-            
-            // Reset Server Count
-            serverConfig.currentCount = 0;
-            serverConfig.lastUserId = null;
-            serverConfig.lastMessages = {};
-            saveServers(servers);
-            
-            // Handle strikes
-            userData.strikes += 1;
+                // Reset Server Count and Warns
+                serverConfig.currentCount = 0;
+                serverConfig.warns = 0;
+                serverConfig.lastUserId = null;
+                serverConfig.lastMessages = {};
+                saveServers(servers);
+            } else {
+                // Just issue a warning and don't reset
+                const warnEmbed = new EmbedBuilder()
+                    .setColor('#ffa500')
+                    .setDescription(`Hey! <@${message.author.id}> typed **${content}** instead of **${expectedNumber}**.\n\n⚠️ **Warning ${serverConfig.warns}/${maxWarns}**! The next number is still **${expectedNumber}**.`);
+                
+                await message.channel.send({ embeds: [warnEmbed] });
+                await message.delete().catch(() => {});
+                
+                saveServers(servers);
+                saveUsers(users); // save strikes
+                return; // stop execution here so count isn't updated
+            }
             
             if (userData.strikes >= 5) {
                 try {
@@ -133,6 +233,7 @@ module.exports = {
         // 3. Number is correct!
         // Update server config
         serverConfig.currentCount = expectedNumber;
+        serverConfig.warns = 0; // Reset warns on a correct number
         serverConfig.lastUserId = message.author.id;
         
         if (!serverConfig.lastMessages) {
