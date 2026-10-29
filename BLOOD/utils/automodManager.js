@@ -256,7 +256,6 @@ async function handleAutomodMessage(message) {
         : ['dalal', 'dalals'];
 
     const content = message.content ? message.content.trim() : '';
-    console.log(`[Automod] 📩 Message in #${message.channel.name || message.channel.id} from ${message.author.tag} (Admin: ${isAdmin}): "${content}"`);
 
     const now = message.createdTimestamp || Date.now();
     // Cache per user across all server channels

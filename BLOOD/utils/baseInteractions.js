@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { getEmoji, getEmojiObject } = require('./botemoji.js');
 const { getBaseRecord, recordDownload, buildBaseButtons } = require('./baseService.js');
 
@@ -20,7 +20,7 @@ async function handleBaseInteractions(interaction) {
 
     try {
         // Acknowledge immediately to prevent 3-second Discord interaction timeout (Unknown interaction 10062)
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         if (customId.startsWith('base_open:')) {
             const layoutHash = customId.split(':')[1];
@@ -146,7 +146,7 @@ async function handleBaseInteractions(interaction) {
             } else if (!interaction.replied && !interaction.deferred) {
                 await interaction.reply({
                     content: `${getEmoji('bluex')} Something went wrong while processing the button.`,
-                    ephemeral: true,
+                    flags: MessageFlags.Ephemeral,
                 }).catch(() => {});
             }
         } catch (_) { }

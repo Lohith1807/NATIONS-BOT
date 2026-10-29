@@ -5,7 +5,8 @@ const {
     ActionRowBuilder, 
     ChannelSelectMenuBuilder, 
     ChannelType, 
-    ComponentType 
+    ComponentType,
+    MessageFlags
 } = require('discord.js');
 const { 
     getAutomodConfig, 
@@ -87,7 +88,7 @@ module.exports = {
                 .setFooter({ text: 'Blood Alliance Automod' })
                 .setTimestamp();
 
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
 
         // 2. REMOVE
@@ -105,7 +106,7 @@ module.exports = {
                 .setFooter({ text: 'Blood Alliance Automod' })
                 .setTimestamp();
 
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
 
         // 3. LIST
@@ -126,7 +127,7 @@ module.exports = {
                 .setFooter({ text: 'Blood Alliance Automod' })
                 .setTimestamp();
 
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
 
         // 4. CONFIGURE
@@ -181,7 +182,7 @@ module.exports = {
                 const response = await interaction.reply({
                     embeds: [embed],
                     components: [channelRow],
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
 
                 const collector = response.createMessageComponentCollector({
@@ -244,7 +245,7 @@ module.exports = {
                 .setFooter({ text: 'Blood Alliance Automod' })
                 .setTimestamp();
 
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
     }
 };
