@@ -244,10 +244,7 @@ setInterval(() => {
 async function handleAutomodMessage(message) {
     if (!message || message.author?.bot || !message.guild) return false;
 
-    // Administrators bypass automod
-    if (message.member && message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-        return false;
-    }
+    const isAdmin = Boolean(message.member && message.member.permissions.has(PermissionFlagsBits.Administrator));
 
     const guildId = message.guild.id;
     const config = getAutomodConfig(guildId);
@@ -338,37 +335,43 @@ async function handleAutomodMessage(message) {
         }
     }
 
-    // 2. Timeout user for 15 minutes
+    // 2. Timeout user for 15 minutes (skip muting if user is Administrator)
     let isMuted = false;
     let muteErrorMsg = '';
-    try {
-        if (message.member) {
-            await message.member.timeout(muteDurationMs, `Automod: Forbidden word / evasion detected ("${detectedWord}")`);
-            isMuted = true;
+    if (isAdmin) {
+        muteErrorMsg = 'User is Administrator (cannot be muted)';
+    } else {
+        try {
+            if (message.member) {
+                await message.member.timeout(muteDurationMs, `Automod: Forbidden word / evasion detected ("${detectedWord}")`);
+                isMuted = true;
+            }
+        } catch (muteErr) {
+            muteErrorMsg = muteErr.code === 50013
+                ? 'Bot missing permissions or user has higher role'
+                : muteErr.message;
+            console.error(`[Automod] Failed to mute ${message.author.tag}:`, muteErrorMsg);
         }
-    } catch (muteErr) {
-        muteErrorMsg = muteErr.code === 50013
-            ? 'Bot missing permissions or user has higher role'
-            : muteErr.message;
-        console.error(`[Automod] Failed to mute ${message.author.tag}:`, muteErrorMsg);
     }
 
-    // 3. Send DM to the user
-    try {
-        const dmEmbed = new EmbedBuilder()
-            .setColor('#E74C3C')
-            .setTitle('⚠️ Automod Warning - You Have Been Muted')
-            .setDescription(
-                `You have been muted in **${message.guild.name}** for **${muteDurationMinutes} minutes**.\n\n` +
-                `**Reason:** Using prohibited words or attempting to bypass word filters (\`${detectedWord}\`).\n\n` +
-                `Please adhere to server guidelines and refrain from bypassing the chat automod.`
-            )
-            .setFooter({ text: 'Blood Alliance Automod' })
-            .setTimestamp();
+    // 3. Send DM to the user (only if muted)
+    if (isMuted) {
+        try {
+            const dmEmbed = new EmbedBuilder()
+                .setColor('#E74C3C')
+                .setTitle('⚠️ Automod Warning - You Have Been Muted')
+                .setDescription(
+                    `You have been muted in **${message.guild.name}** for **${muteDurationMinutes} minutes**.\n\n` +
+                    `**Reason:** Using prohibited words or attempting to bypass word filters (\`${detectedWord}\`).\n\n` +
+                    `Please adhere to server guidelines and refrain from bypassing the chat automod.`
+                )
+                .setFooter({ text: 'Blood Alliance Automod' })
+                .setTimestamp();
 
-        await message.author.send({ embeds: [dmEmbed] }).catch(() => {});
-    } catch (dmErr) {
-        // Ignore DM failed (e.g. user closed DMs)
+            await message.author.send({ embeds: [dmEmbed] }).catch(() => {});
+        } catch (dmErr) {
+            // Ignore DM failed (e.g. user closed DMs)
+        }
     }
 
     // 4. Send Log to the configured channel
