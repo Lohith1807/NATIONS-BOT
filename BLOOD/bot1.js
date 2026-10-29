@@ -785,8 +785,12 @@ bot1.on('messageCreate', async (message) => {
     }
 
     // Word Automod & Anti-Evasion Protection (deletes message & mutes for 15m)
-    const { handleAutomodMessage } = require('./utils/automodManager.js');
-    if (await handleAutomodMessage(message)) return;
+    try {
+        const { handleAutomodMessage } = require('./utils/automodManager.js');
+        if (await handleAutomodMessage(message)) return;
+    } catch (automodErr) {
+        console.error('❌ [Bot1] Error in handleAutomodMessage:', automodErr);
+    }
 
     if (message.content.toLowerCase() === ';reqs') {
         const command = bot1.commands.get('reqs');

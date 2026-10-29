@@ -256,6 +256,8 @@ async function handleAutomodMessage(message) {
         : ['dalal', 'dalals'];
 
     const content = message.content ? message.content.trim() : '';
+    console.log(`[Automod] 📩 Message in #${message.channel.name || message.channel.id} from ${message.author.tag} (Admin: ${isAdmin}): "${content}"`);
+
     const now = message.createdTimestamp || Date.now();
     // Cache per user across all server channels
     const cacheKey = `${guildId}:${message.author.id}`;
@@ -312,6 +314,8 @@ async function handleAutomodMessage(message) {
     const muteDurationMinutes = config.muteDurationMinutes || 15;
     const muteDurationMs = muteDurationMinutes * 60 * 1000;
 
+    console.log(`[Automod] 🚨 MATCH DETECTED for forbidden word "${detectedWord}" from user ${message.author.tag} (Admin: ${isAdmin})! Deleting message...`);
+
     // Reset user buffer immediately to prevent repeated triggers
     userMessageHistory.delete(cacheKey);
 
@@ -320,17 +324,21 @@ async function handleAutomodMessage(message) {
         for (const msgItem of matchedSlice) {
             try {
                 if (msgItem.id === message.id) {
-                    await message.delete().catch(() => {});
+                    await message.delete();
+                    console.log(`[Automod] 🗑️ Deleted message ${message.id} from #${message.channel.name || message.channel.id}`);
                 } else {
                     const targetChan = message.guild.channels.cache.get(msgItem.channelId) ||
                         await message.guild.channels.fetch(msgItem.channelId).catch(() => null);
                     if (targetChan) {
                         const fetchedMsg = await targetChan.messages.fetch(msgItem.id).catch(() => null);
-                        if (fetchedMsg) await fetchedMsg.delete().catch(() => {});
+                        if (fetchedMsg) {
+                            await fetchedMsg.delete();
+                            console.log(`[Automod] 🗑️ Deleted previous message ${msgItem.id} from #${targetChan.name || targetChan.id}`);
+                        }
                     }
                 }
             } catch (delErr) {
-                // Ignore message already deleted errors
+                console.error(`[Automod] ❌ Failed to delete message ${msgItem.id}:`, delErr.message, `(Code: ${delErr.code})`);
             }
         }
     }
