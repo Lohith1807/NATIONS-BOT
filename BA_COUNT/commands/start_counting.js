@@ -20,6 +20,8 @@ module.exports = {
         servers[guildId] = {
             channelId: channel.id,
             currentCount: 0,
+            warns: 0,
+            maxWarns: 2,
             lastUserId: null
         };
         

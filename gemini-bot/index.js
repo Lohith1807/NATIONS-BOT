@@ -1,9 +1,9 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits, MessageFlags, Partials } from 'discord.js';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 
 // 1. Startup validation
-const token = process.env.DISCORD_BOT_TOKEN;
+const token = process.env.DISCORD_BOT_TOKEN || process.env.GEMINI_BOT_TOKEN;
 const apiKey = process.env.GEMINI_API_KEY;
 
 if (!token || token.trim() === '' || token.toLowerCase().startsWith('your_')) {
@@ -16,12 +16,27 @@ if (!apiKey || apiKey.trim() === '' || apiKey.toLowerCase().startsWith('your_'))
     process.exit(1);
 }
 
+// Process safety
+process.on('unhandledRejection', error => {
+    console.error('Unhandled Promise Rejection:', error);
+});
+process.on('uncaughtException', error => {
+    console.error('Uncaught Exception:', error);
+});
+
 // 2. Initialize Clients
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions
+    ],
+    partials: [
+        Partials.Message,
+        Partials.Channel,
+        Partials.Reaction,
+        Partials.User
     ]
 });
 
@@ -30,6 +45,50 @@ const genAI = new GoogleGenerativeAI(apiKey);
 // State Management
 const enabledChannels = new Set();
 const targetUsers = new Map(); // Map: userId -> { mode: string }
+const ghostReactionCooldowns = new Map();
+
+// Ghost reaction detection definitions
+const GHOST_LETTERS = new Set(['g', 'h', 'o', 's', 't']);
+const GHOST_UNICODE_CHARS = new Set([
+    '🇬', '🇭', '🇴', '🇸', '🇹', // Regional indicator letters
+    '🅖', '🅗', '🅞', '🅢', '🅣', // Circled / boxed letters
+    '🅶', '🅷', '🅾️', '🅾', '🆂', '🆃', // Squared letters
+    'Ⓖ', 'Ⓗ', 'Ⓞ', 'Ⓢ', 'Ⓣ', // Circled latin
+    'ⓖ', 'ⓗ', 'ⓞ', 'ⓢ', 'ⓣ', // Small circled latin
+    '👻' // Ghost emoji
+]);
+
+function isGhostReaction(emoji) {
+    if (!emoji || !emoji.name) return false;
+
+    // Check direct unicode set match
+    if (GHOST_UNICODE_CHARS.has(emoji.name)) return true;
+
+    // Check code points for regional indicators: G (0x1F1EC), H (0x1F1ED), O (0x1F1F4), S (0x1F1F8), T (0x1F1F9)
+    // and blood type O (0x1F17E), ghost emoji (0x1F47B)
+    const codePoint = emoji.name.codePointAt(0);
+    if (codePoint) {
+        if ([0x1f1ec, 0x1f1ed, 0x1f1f4, 0x1f1f8, 0x1f1f9, 0x1f17e, 0x1f47b].includes(codePoint)) {
+            return true;
+        }
+    }
+
+    const cleanName = emoji.name.toLowerCase().trim();
+
+    // Check single letter
+    if (GHOST_LETTERS.has(cleanName)) return true;
+
+    // Check if name contains 'ghost'
+    if (cleanName.includes('ghost')) return true;
+
+    // Check custom emoji names like regional_indicator_g, letter_g, emoji_g, etc.
+    const match = cleanName.match(/^(?:regional_indicator_|letter_|alphabet_|symbol_|font_)?([a-z])$/);
+    if (match && GHOST_LETTERS.has(match[1])) {
+        return true;
+    }
+
+    return false;
+}
 
 // 3. Define commands
 const commands = [
@@ -70,29 +129,55 @@ const commands = [
             option.setName('user')
                 .setDescription('The user to remove')
                 .setRequired(true)
-        )
+        ),
+    new SlashCommandBuilder()
+        .setName('messi')
+        .setDescription('Tag call boy messi')
 ].map(cmd => cmd.toJSON());
 
 // 4. Ready Handler
-client.once('ready', async () => {
-    // Print success message displaying the bot tag as requested
+client.once('clientReady', async () => {
     console.log(`Bot tag: ${client.user.tag}`);
-    
-    // Register commands globally
+
     const rest = new REST({ version: '10' }).setToken(token);
     try {
+        console.log('Registering slash commands globally...');
         await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: commands }
         );
+        console.log('Global slash commands registered successfully!');
+
+        // Also register directly to all guilds for instant availability
+        for (const [guildId, guild] of client.guilds.cache) {
+            try {
+                await rest.put(
+                    Routes.applicationGuildCommands(client.user.id, guildId),
+                    { body: commands }
+                );
+                console.log(`Registered slash commands to guild: ${guild.name} (${guildId})`);
+            } catch (gErr) {
+                console.warn(`Could not register commands to guild ${guildId}:`, gErr.message);
+            }
+        }
     } catch (error) {
-        console.error('Error registering global slash commands:', error);
+        console.error('Error registering slash commands:', error);
     }
 });
 
 // 5. Slash Command Interactions (No console.log here!)
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
+
+    // Restrict all slash commands to Chief only
+    const CHIEF_ID = '1393061101838532630';
+    if (interaction.user.id !== CHIEF_ID) {
+        await interaction.reply({
+            content: "I'm the assistant for Ghost, not for you.",
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
 
     try {
         const { commandName } = interaction;
@@ -101,107 +186,156 @@ client.on('interactionCreate', async interaction => {
             const action = interaction.options.getString('action');
             if (action === 'Start') {
                 enabledChannels.add(interaction.channelId);
-                await interaction.reply({ content: 'AI agent started in this channel.', ephemeral: true });
+                await interaction.reply({ content: 'AI agent started in this channel.', flags: MessageFlags.Ephemeral });
             } else if (action === 'Stop') {
                 enabledChannels.delete(interaction.channelId);
-                await interaction.reply({ content: 'AI agent stopped in this channel.', ephemeral: true });
+                await interaction.reply({ content: 'AI agent stopped in this channel.', flags: MessageFlags.Ephemeral });
             }
         } else if (commandName === 'traget_user') {
             const user = interaction.options.getUser('user');
             const action = interaction.options.getString('action');
-            
+
             targetUsers.set(user.id, { mode: action });
-            await interaction.reply({ content: `Target user configured: ${user.username} is now on ${action}.`, ephemeral: true });
+            await interaction.reply({ content: `Target user configured: ${user.username} is now on ${action}.`, flags: MessageFlags.Ephemeral });
         } else if (commandName === 'traget_off') {
             const user = interaction.options.getUser('user');
             targetUsers.delete(user.id);
-            await interaction.reply({ content: `Removed ${user.username} from target list.`, ephemeral: true });
+            await interaction.reply({ content: `Removed ${user.username} from target list.`, flags: MessageFlags.Ephemeral });
+        } else if (commandName === 'messi') {
+            await interaction.reply({ content: 'Sent!', flags: MessageFlags.Ephemeral });
+            if (interaction.channel) {
+                await sendMessiWebhook(interaction.channel);
+            }
         }
     } catch (error) {
         console.error('Error handling interaction:', error);
     }
 });
 
-// Helper function to call Gemini
+// Helper function to call Gemini with retry, backoff, and model fallback
 async function getGeminiRoast(userMessage, systemInstruction) {
-    const model = genAI.getGenerativeModel({
-        model: 'gemini-3.1-flash-lite',
-        systemInstruction: systemInstruction,
-        safetySettings: [
-            {
-                category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold: HarmBlockThreshold.BLOCK_NONE,
-            },
-            {
-                category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold: HarmBlockThreshold.BLOCK_NONE,
-            },
-            {
-                category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold: HarmBlockThreshold.BLOCK_NONE,
-            },
-            {
-                category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold: HarmBlockThreshold.BLOCK_NONE,
-            },
-        ],
-    });
+    const candidateModels = [
+        process.env.GEMINI_MODEL,
+        'gemini-3.5-flash-lite',
+        'gemini-3.5-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-flash-latest'
+    ].filter(Boolean).filter((val, idx, arr) => arr.indexOf(val) === idx);
 
-    const result = await model.generateContent({
-        contents: [
-            {
-                role: 'user',
-                parts: [{ text: userMessage }]
+    let lastError = null;
+
+    for (const modelName of candidateModels) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+                const model = genAI.getGenerativeModel({
+                    model: modelName,
+                    systemInstruction: systemInstruction,
+                    safetySettings: [
+                        {
+                            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+                            threshold: HarmBlockThreshold.BLOCK_NONE,
+                        },
+                        {
+                            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                            threshold: HarmBlockThreshold.BLOCK_NONE,
+                        },
+                        {
+                            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                            threshold: HarmBlockThreshold.BLOCK_NONE,
+                        },
+                        {
+                            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                            threshold: HarmBlockThreshold.BLOCK_NONE,
+                        },
+                    ],
+                });
+
+                const result = await model.generateContent({
+                    contents: [
+                        {
+                            role: 'user',
+                            parts: [{ text: userMessage }]
+                        }
+                    ]
+                });
+
+                const text = result?.response?.text();
+                if (text && text.trim() !== '') {
+                    return text;
+                }
+            } catch (err) {
+                lastError = err;
+                const errMsg = err?.message || String(err);
+                const status = err?.status;
+                const isRetryable = status === 503 || status === 429 || (status >= 500 && status < 600) ||
+                    errMsg.includes('503') || errMsg.includes('429') ||
+                    errMsg.includes('fetch failed') || errMsg.includes('high demand') ||
+                    errMsg.includes('ETIMEDOUT') || errMsg.includes('ECONNRESET');
+
+                console.warn(`[Gemini API] Model '${modelName}' attempt ${attempt} failed: ${errMsg.split('\n')[0]}`);
+
+                if (attempt < 2 && isRetryable) {
+                    const delayMs = 800 * attempt + Math.floor(Math.random() * 400);
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                    continue;
+                }
+                break;
             }
-        ]
-    });
+        }
+    }
 
-    return result.response.text();
+    console.error('[Gemini API] All fallback models failed. Last error:', lastError?.message || lastError);
+    return null;
 }
+
 
 // Helper function to safely send message within Discord's 2000 character limit
 async function sendSplitMessage(message, text) {
-    if (text.length <= 2000) {
-        await message.reply(text);
-        return;
-    }
+    try {
+        if (text.length <= 2000) {
+            await message.reply(text).catch(() => message.channel.send(text));
+            return;
+        }
 
-    const chunks = [];
-    let currentChunk = '';
-    const lines = text.split('\n');
+        const chunks = [];
+        let currentChunk = '';
+        const lines = text.split('\n');
 
-    for (const line of lines) {
-        if (currentChunk.length + line.length + 1 > 1900) {
-            if (currentChunk.trim() !== '') {
-                chunks.push(currentChunk);
-                currentChunk = '';
-            }
-            // If a single line itself is longer than 1900 characters, split it by characters
-            if (line.length > 1900) {
-                let tempLine = line;
-                while (tempLine.length > 1900) {
-                    chunks.push(tempLine.slice(0, 1900));
-                    tempLine = tempLine.slice(1900);
+        for (const line of lines) {
+            if (currentChunk.length + line.length + 1 > 1900) {
+                if (currentChunk.trim() !== '') {
+                    chunks.push(currentChunk);
+                    currentChunk = '';
                 }
-                currentChunk = tempLine;
+                // If a single line itself is longer than 1900 characters, split it by characters
+                if (line.length > 1900) {
+                    let tempLine = line;
+                    while (tempLine.length > 1900) {
+                        chunks.push(tempLine.slice(0, 1900));
+                        tempLine = tempLine.slice(1900);
+                    }
+                    currentChunk = tempLine;
+                } else {
+                    currentChunk = line;
+                }
             } else {
-                currentChunk = line;
+                currentChunk = currentChunk ? currentChunk + '\n' + line : line;
             }
-        } else {
-            currentChunk = currentChunk ? currentChunk + '\n' + line : line;
         }
-    }
-    if (currentChunk.trim() !== '') {
-        chunks.push(currentChunk);
-    }
+        if (currentChunk.trim() !== '') {
+            chunks.push(currentChunk);
+        }
 
-    // Send the first chunk as a reply
-    if (chunks.length > 0) {
-        let lastMessage = await message.reply(chunks[0]);
-        // Send subsequent chunks as follow-up messages in the same channel
-        for (let i = 1; i < chunks.length; i++) {
-            lastMessage = await message.channel.send(chunks[i]);
+        // Send the first chunk as a reply
+        if (chunks.length > 0) {
+            await message.reply(chunks[0]).catch(() => message.channel.send(chunks[0]));
+            // Send subsequent chunks as follow-up messages in the same channel
+            for (let i = 1; i < chunks.length; i++) {
+                await message.channel.send(chunks[i]).catch(console.error);
+            }
         }
+    } catch (err) {
+        console.error('Error in sendSplitMessage:', err);
     }
 }
 
@@ -217,11 +351,11 @@ async function sendTargetRoast(message, text) {
 
         const webhooks = await message.channel.fetchWebhooks();
         let webhook = webhooks.find(wh => wh.token && (wh.owner?.id === client.user.id || wh.name === 'Mod Messi Fraud'))
-                   || webhooks.find(wh => wh.token);
+            || webhooks.find(wh => wh.token);
 
         if (!webhook) {
             webhook = await message.channel.createWebhook({
-                name: 'Mod Messi is Gay',
+                name: 'cwl Messi is Gay',
                 avatar: client.user.displayAvatarURL(),
                 reason: 'Exclusive webhook for target roasts'
             });
@@ -231,7 +365,7 @@ async function sendTargetRoast(message, text) {
             if (mentionText.length <= 2000) {
                 await webhook.send({
                     content: mentionText,
-                    username: 'Mod Messi Fraud',
+                    username: 'cwl Messi is gay',
                     avatarURL: client.user.displayAvatarURL(),
                     allowedMentions: { users: [message.author.id] }
                 });
@@ -240,7 +374,7 @@ async function sendTargetRoast(message, text) {
                 for (const chunk of chunks) {
                     await webhook.send({
                         content: chunk,
-                        username: 'Mod Messi Fraud',
+                        username: 'CWL Messi GAY',
                         avatarURL: client.user.displayAvatarURL(),
                         allowedMentions: { users: [message.author.id] }
                     });
@@ -254,6 +388,52 @@ async function sendTargetRoast(message, text) {
     }
 }
 
+// Helper function to send /messi callout via Webhook
+async function sendMessiWebhook(channel) {
+    const content = '<@1299282477076058156> Hey , Call boy messi where are u ?';
+    try {
+        if (!channel || typeof channel.fetchWebhooks !== 'function') {
+            await channel.send({
+                content: content,
+                allowedMentions: { users: ['1299282477076058156'] }
+            });
+            return;
+        }
+
+        const webhooks = await channel.fetchWebhooks();
+        let webhook = webhooks.find(wh => wh.token && (wh.owner?.id === client.user.id || wh.name === 'CWL Messi GAY' || wh.name === 'cwl Messi is Gay' || wh.name === 'Mod Messi Fraud'))
+            || webhooks.find(wh => wh.token);
+
+        if (!webhook) {
+            webhook = await channel.createWebhook({
+                name: 'CWL Messi GAY',
+                avatar: client.user.displayAvatarURL(),
+                reason: 'Webhook for messi callout'
+            });
+        }
+
+        if (webhook) {
+            await webhook.send({
+                content: content,
+                username: 'CWL Messi GAY',
+                avatarURL: client.user.displayAvatarURL(),
+                allowedMentions: { users: ['1299282477076058156'] }
+            });
+        } else {
+            await channel.send({
+                content: content,
+                allowedMentions: { users: ['1299282477076058156'] }
+            });
+        }
+    } catch (err) {
+        console.error('Failed to send messi callout via webhook:', err);
+        await channel.send({
+            content: content,
+            allowedMentions: { users: ['1299282477076058156'] }
+        }).catch(console.error);
+    }
+}
+
 // 6. Message Handler (No console.log here!)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
@@ -263,7 +443,7 @@ client.on('messageCreate', async message => {
         // Dismiss specific user when they tag the bot
         if (message.author.id === '1299282477076058156') {
             try {
-                await message.reply("you dumb ass dont disturb me, if i start you will");
+                await message.reply("you dumb ass dont disturb me, if i start you will be cooked");
             } catch (error) {
                 console.error('Error replying to dismissed user:', error);
             }
@@ -287,6 +467,28 @@ client.on('messageCreate', async message => {
             }
             return;
         }
+    }
+
+    // Check for /messi command in text
+    if (message.content.trim().toLowerCase() === '/messi') {
+        if (message.author.id !== '1393061101838532630') {
+            try {
+                await message.reply("I'm the assistant for Ghost, not for you.");
+            } catch (error) {
+                console.error('Error replying to non-Chief:', error);
+            }
+            return;
+        }
+
+        try {
+            if (message.deletable) {
+                await message.delete().catch(() => { });
+            }
+            await sendMessiWebhook(message.channel);
+        } catch (error) {
+            console.error('Error handling /messi command:', error);
+        }
+        return;
     }
 
     // Check if the message contains the word 'messi' (case-insensitive)
@@ -380,10 +582,98 @@ IMPORTANT: Keep your response clear, detailed, but under 1800 characters so that
             } else {
                 await sendSplitMessage(message, replyContent);
             }
+        } else if (targetConfig) {
+            // Fallback roast if all AI models are temporarily unavailable or high demand
+            const defaultRoasts = [
+                "Even Google's servers refused to process whatever you just said 💀",
+                "You're not even worth the AI compute power right now 💀",
+                "Keep crying to the wall, you absolute noob 💀"
+            ];
+            const fallback = defaultRoasts[Math.floor(Math.random() * defaultRoasts.length)];
+            await sendTargetRoast(message, fallback);
+        } else if (enabledChannels.has(message.channelId)) {
+            await message.reply("⚠️ The AI service is currently experiencing high demand. Please try again in a few moments.");
         }
     } catch (error) {
         // Robust error logging for the API request
         console.error('Error processing message or generating response:', error);
+    }
+});
+
+// 7. Reaction Handler (Detects 'G H O S T' letters in reactions)
+client.on('messageReactionAdd', async (reaction, user) => {
+    try {
+        if (!user || user.bot) return;
+
+        // Ignore Ghost / Chief himself
+        if (user.id === '1393061101838532630') return;
+
+        // Fetch partials if uncached
+        if (reaction.partial) {
+            try {
+                await reaction.fetch();
+            } catch (err) {
+                console.error('Error fetching partial reaction:', err);
+                return;
+            }
+        }
+        if (user.partial) {
+            try {
+                await user.fetch();
+            } catch (err) {
+                console.error('Error fetching partial user:', err);
+                return;
+            }
+        }
+        if (reaction.message?.partial) {
+            try {
+                await reaction.message.fetch();
+            } catch (err) {
+                console.error('Error fetching partial reaction message:', err);
+                return;
+            }
+        }
+
+        if (!isGhostReaction(reaction.emoji)) return;
+
+        // Cooldown per user to prevent multi-reaction spam
+        const now = Date.now();
+        const lastTrigger = ghostReactionCooldowns.get(user.id) || 0;
+        if (now - lastTrigger < 8000) return;
+        ghostReactionCooldowns.set(user.id, now);
+
+        if (ghostReactionCooldowns.size > 200) {
+            for (const [id, timestamp] of ghostReactionCooldowns.entries()) {
+                if (now - timestamp > 30000) {
+                    ghostReactionCooldowns.delete(id);
+                }
+            }
+        }
+
+        const replyContent = `<@${user.id}> gay if u have dare then talk to me directly not in reactions u stupid`;
+
+        try {
+            await reaction.message.reply({
+                content: replyContent,
+                allowedMentions: {
+                    users: [user.id],
+                    repliedUser: false
+                }
+            });
+        } catch (replyErr) {
+            try {
+                await reaction.message.channel.send({
+                    content: replyContent,
+                    allowedMentions: {
+                        users: [user.id]
+                    }
+                });
+            } catch (channelErr) {
+                console.error('Error sending ghost reaction response to channel:', channelErr);
+            }
+        }
+    } catch (err) {
+        console.error('Error in messageReactionAdd handler:', err);
     }
 });
 

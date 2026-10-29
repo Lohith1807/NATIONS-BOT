@@ -5,18 +5,24 @@ const crypto = require('crypto');
 // ─── Upload Database ────────────────────────────────────────────────────────
 const DB_PATH = path.join(__dirname, '../data/uploadedBases.json');
 
+let uploadsCache = null;
+
 function loadUploads() {
+    if (uploadsCache !== null) return uploadsCache;
     try {
         if (fs.existsSync(DB_PATH)) {
-            return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+            uploadsCache = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+            return uploadsCache;
         }
     } catch (err) {
         console.error('❌ [BaseService] Failed to load uploads DB:', err.message);
     }
-    return [];
+    uploadsCache = [];
+    return uploadsCache;
 }
 
 function saveUploads(uploads) {
+    uploadsCache = uploads;
     try {
         fs.writeFileSync(DB_PATH, JSON.stringify(uploads, null, 2), 'utf8');
     } catch (err) {

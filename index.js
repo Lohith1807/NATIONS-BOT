@@ -310,3 +310,6 @@ require("./BLOOD/index.js");
 
 // Run the counting bot
 require("./BA_COUNT/index.js");
+
+// Run the Gemini bot
+import("./gemini-bot/index.js").catch(err => console.error("Error loading gemini-bot:", err));

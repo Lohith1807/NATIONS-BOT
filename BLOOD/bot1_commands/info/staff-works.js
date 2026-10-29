@@ -84,7 +84,7 @@ ${getEmoji('parrow')} **Player History Check:**
 > ${getEmoji('rarroww')} For war entry and other tickets: Only approve or reject will be available, but only after submitting the applications it comes.
 > ${getEmoji('parrow')} If at any cost these aren't working, then try manually by using commands like before.
 
-${getEmoji('rarroww')} **Clan Assignment:** Assign recruits based on requirements in the recruitment channel (https://discord.com/channels/1153720899715993681/1503298102860320829). After assigning, you **MUST** update the requirement count using \`/edit-recruitment clan: <clan>\`. (e.g., if they need 5 TH18s and you assign 2, change the count to 3). Accurate counts are mandatory! After review, use \`/approve\` or \`/decline\`.
+${getEmoji('rarroww')} **Clan Assignment:** Assign recruits using \`/assignclan\` based on requirements in the recruitment channel (https://discord.com/channels/1153720899715993681/1503298102860320829). After assigning, you **MUST** update the requirement count using \`/edit-recruitment clan: <clan>\`. (e.g., if they need 5 TH18s and you assign 2, change the count to 3). Accurate counts are mandatory!
 
 ${getEmoji('rarroww')} **Alliance & Rep Tickets:** For clans wanting to join the alliance or users applying for Rep, ask them to follow the required steps and tag admins.
 

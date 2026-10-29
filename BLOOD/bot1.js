@@ -611,7 +611,7 @@ ${getEmoji('yarrow')} **Ticket Conduct — After Claiming:** Once you claim a ti
 
 ${getEmoji('parrow')} **Player Ticket:** For FWA entry: After a user submits their application, there is an attached "Check" button. Click on that and check for the submitted ID. Then use "Approve" or "Reject". Submission proof screenshot isn't important here, but in the reason mention correctly (e.g., if a person is from BL clans but not banned, write "Player from BL Clans But he isnt banned"). For war entry and other tickets: Only approve or reject will be available, but only after submitting the applications it comes. If at any cost these aren't working, then try manually by using commands like before.
 
-${getEmoji('parrow')} **Clan Assignment:** If a player needs a clan, check clan needs using \`;compo all\` in the staff bot room. Guide them to a suitable clan. Ask them to follow the steps and link their account to Clash King bot using \`/link\`. After assigning, update the recruitment count using \`/edit-recruitment clan: <clan>\`.
+${getEmoji('parrow')} **Clan Assignment:** If a player needs a clan, check clan needs using \`;compo all\` in the staff bot room. Guide them to a suitable clan. Ask them to follow the steps and link their account to Clash King bot using \`/link\`. Assign them using \`/assignclan\`. After assigning, update the recruitment count using \`/edit-recruitment clan: <clan>\`.
 ${getEmoji('rarroww')} **Alliance & Rep Tickets:** For clans wanting to join the alliance or users applying for Rep, ask them to follow the required steps and tag Mod or Admin.
 
 ${getEmoji('yarrow')} **Help & Query Tickets:** Ask about their problem and try to solve it. If unable to help, tag a Server Moderator or Admin.Only React when The Welcomer and help assistance staff isnt online.
@@ -783,6 +783,10 @@ bot1.on('messageCreate', async (message) => {
             }
         }
     }
+
+    // Word Automod & Anti-Evasion Protection (deletes message & mutes for 15m)
+    const { handleAutomodMessage } = require('./utils/automodManager.js');
+    if (await handleAutomodMessage(message)) return;
 
     if (message.content.toLowerCase() === ';reqs') {
         const command = bot1.commands.get('reqs');

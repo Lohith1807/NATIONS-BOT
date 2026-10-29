@@ -15,8 +15,9 @@ module.exports = {
         if (servers[guildId]) {
             const serverConfig = servers[guildId];
 
-            // Reset count and last user
+            // Reset count, warns, and last user
             serverConfig.currentCount = 0;
+            serverConfig.warns = 0;
             serverConfig.lastUserId = null;
             serverConfig.lastMessages = {};
             saveServers(servers);
@@ -26,7 +27,7 @@ module.exports = {
             if (users[guildId]) {
                 delete users[guildId];
                 saveUsers(users);
-            }A
+            }
 
             // Remove all counting roles from every member
             removeAllCountingRoles(interaction.guild, serverConfig).catch(err =>

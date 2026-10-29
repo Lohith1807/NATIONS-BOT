@@ -9,6 +9,8 @@ const COUNTING_ROLES = [
     { threshold: 50, name: 'noobie' }
 ];
 
+const guildQueues = new Map();
+
 module.exports = {
     name: 'messageCreate',
     DEFAULT_ROLES: COUNTING_ROLES,
@@ -106,98 +108,112 @@ module.exports = {
         if (!serverConfig) return;
         if (message.channel.id !== serverConfig.channelId) return;
 
-        // Allow digits, hex/bin/oct characters, basic operators, and spaces for math expressions
-        const mathRegex = /^[\da-fA-FxXbBoO+\-*/. ()]+$/;
-        const content = message.content.trim();
-        
-        if (!mathRegex.test(content) || content === '') {
-            // If they type regular text or invalid math, ignore it
-            return;
+        // Process counting messages sequentially per server to prevent race conditions and duplicate resets
+        const prevTask = guildQueues.get(guildId) || Promise.resolve();
+        const currentTask = prevTask
+            .catch(() => {})
+            .then(() => processCountingMessage(message, client, guildId));
+        guildQueues.set(guildId, currentTask);
+        await currentTask;
+    }
+};
+
+async function processCountingMessage(message, client, guildId) {
+    // Allow digits, hex/bin/oct characters, basic operators, and spaces for math expressions
+    const mathRegex = /^[\da-fA-FxXbBoO+\-*/. ()]+$/;
+    const content = message.content.trim();
+    
+    if (!mathRegex.test(content) || content === '') {
+        // If they type regular text or invalid math, ignore it
+        return;
+    }
+
+    // Reload servers & users to ensure freshest data in queue
+    const servers = getServers();
+    const serverConfig = servers[guildId];
+    if (!serverConfig || message.channel.id !== serverConfig.channelId) return;
+
+    const expectedNumber = (serverConfig.currentCount || 0) + 1;
+    let inputNumber = null;
+    
+    try {
+        // Safe evaluation of the math expression
+        const evalResult = Function(`'use strict'; return (${content})`)();
+        if (typeof evalResult === 'number' && !isNaN(evalResult) && isFinite(evalResult)) {
+            inputNumber = evalResult;
         }
+    } catch (error) {
+        // If evaluation fails (e.g. pure hex like "A"), we'll handle it below
+    }
 
-        const expectedNumber = serverConfig.currentCount + 1;
-        let inputNumber = null;
-        
-        try {
-            // Safe evaluation of the math expression
-            const evalResult = Function(`'use strict'; return (${content})`)();
-            if (typeof evalResult === 'number' && !isNaN(evalResult) && isFinite(evalResult)) {
-                inputNumber = evalResult;
-            }
-        } catch (error) {
-            // If evaluation fails (e.g. pure hex like "A"), we'll handle it below
+    // Magic base detection! If it didn't match decimal, check binary, and hex
+    if (inputNumber !== expectedNumber && /^[a-fA-F0-9]+$/.test(content)) {
+        if (parseInt(content, 2) === expectedNumber) {
+            inputNumber = expectedNumber;
+        } else if (parseInt(content, 16) === expectedNumber) {
+            inputNumber = expectedNumber;
+        } else if (inputNumber === null) {
+            // If it failed eval (like "A" or "BAD") but is valid hex, set it so it triggers a penalty
+            inputNumber = parseInt(content, 16);
         }
+    }
 
-        // Magic base detection! If it didn't match decimal, check binary, and hex
-        if (inputNumber !== expectedNumber && /^[a-fA-F0-9]+$/.test(content)) {
-            if (parseInt(content, 2) === expectedNumber) {
-                inputNumber = expectedNumber;
-            } else if (parseInt(content, 16) === expectedNumber) {
-                inputNumber = expectedNumber;
-            } else if (inputNumber === null) {
-                // If it failed eval (like "A" or "BAD") but is valid hex, set it so it triggers a penalty
-                inputNumber = parseInt(content, 16);
-            }
-        }
+    // If we still don't have a valid number, it's just garbage text (like "60+"), ignore it
+    if (inputNumber === null) {
+        return;
+    }
 
-        // If we still don't have a valid number, it's just garbage text (like "60+"), ignore it
-        if (inputNumber === null) {
-            return;
-        }
+    if (serverConfig.warns === undefined || typeof serverConfig.warns !== 'number' || isNaN(serverConfig.warns)) {
+        serverConfig.warns = 0;
+    }
+    const maxWarns = serverConfig.maxWarns !== undefined ? serverConfig.maxWarns : 2;
 
-        if (serverConfig.warns === undefined) serverConfig.warns = 0;
-        const maxWarns = serverConfig.maxWarns !== undefined ? serverConfig.maxWarns : 3;
+    const users = getUsers();
+    
+    if (!users[guildId]) users[guildId] = {};
+    if (!users[guildId][message.author.id]) {
+        users[guildId][message.author.id] = { score: 0, strikes: 0 };
+    }
+    
+    const userData = users[guildId][message.author.id];
 
-        const users = getUsers();
-        
-        if (!users[guildId]) users[guildId] = {};
-        if (!users[guildId][message.author.id]) {
-            users[guildId][message.author.id] = { score: 0, strikes: 0 };
-        }
-        
-        const userData = users[guildId][message.author.id];
+    // 1. Check if same user is counting back-to-back
+    if (serverConfig.lastUserId === message.author.id) {
+        await message.delete().catch(() => {});
+        const reply = await message.channel.send(`<@${message.author.id}> I Think You Have Diabaties Please Wait For Some time upto some one interacts with next number , Noob`);
+        setTimeout(() => reply.delete().catch(() => {}), 5000);
+        return;
+    }
 
-        // 1. Check if same user is counting back-to-back
-        if (serverConfig.lastUserId === message.author.id) {
-            await message.delete().catch(() => {});
-            const reply = await message.channel.send(`<@${message.author.id}> I Think You Have Diabaties Please Wait For Some time upto some one interacts with next number , Noob`);
-            setTimeout(() => reply.delete().catch(() => {}), 5000);
-            return;
-        }
+    // 2. Check if the number is correct
+    if (inputNumber !== expectedNumber) {
+        serverConfig.warns += 1;
+        userData.strikes = (userData.strikes || 0) + 1; // Keep user strikes for muting
 
-        // 2. Check if the number is correct
-        if (inputNumber !== expectedNumber) {
-            serverConfig.warns += 1;
-            userData.strikes += 1; // Keep user strikes for muting
-
-            if (serverConfig.warns >= maxWarns) {
-                // Reached max warns, reset the count
-                const errorEmbed = new EmbedBuilder()
-                    .setColor('#ff0000')
-                    .setDescription(`Hey mates because of this guy the count is reseted this guy typed **${content}** instead of **${expectedNumber}**\n\n**Counting has been reset to 0!** (Reached ${maxWarns}/${maxWarns} warns)`);
-                    
-                await message.channel.send({ content: `<@${message.author.id}>`, embeds: [errorEmbed] });
-                
-                // Reset Server Count and Warns
-                serverConfig.currentCount = 0;
-                serverConfig.warns = 0;
-                serverConfig.lastUserId = null;
-                serverConfig.lastMessages = {};
-                saveServers(servers);
-            } else {
-                // Just issue a warning and don't reset
-                const warnEmbed = new EmbedBuilder()
-                    .setColor('#ffa500')
-                    .setDescription(`Hey! <@${message.author.id}> typed **${content}** instead of **${expectedNumber}**.\n\n⚠️ **Warning ${serverConfig.warns}/${maxWarns}**! The next number is still **${expectedNumber}**.`);
-                
-                await message.channel.send({ embeds: [warnEmbed] });
-                await message.delete().catch(() => {});
-                
-                saveServers(servers);
-                saveUsers(users); // save strikes
-                return; // stop execution here so count isn't updated
-            }
+        if (serverConfig.warns >= maxWarns) {
+            // Reached max warns, reset the count
+            const errorEmbed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setDescription(`Hey mates because of this guy the count is reseted this guy typed **${content}** instead of **${expectedNumber}**\n\n**Counting has been reset to 0!** (Reached ${serverConfig.warns}/${maxWarns} warns)`);
             
+            // Reset Server Count and Warns immediately in the database
+            serverConfig.currentCount = 0;
+            serverConfig.warns = 0;
+            serverConfig.lastUserId = null;
+            serverConfig.lastMessages = {};
+            saveServers(servers);
+
+            // Reset scores for all users in the server
+            if (users[guildId]) {
+                for (const uid in users[guildId]) {
+                    users[guildId][uid].score = 0;
+                }
+            }
+            saveUsers(users);
+
+            // Send reset announcement
+            await message.channel.send({ content: `<@${message.author.id}>`, embeds: [errorEmbed] }).catch(() => {});
+
             if (userData.strikes >= 5) {
                 try {
                     // Mute for 2 minutes (120,000 ms)
@@ -206,71 +222,93 @@ module.exports = {
                     const muteMsg = await message.channel.send(`<@${message.author.id}> has been muted for 2 minutes for failing to count 5 times.`);
                     setTimeout(() => muteMsg.delete().catch(() => {}), 10000);
                     userData.strikes = 0; // Reset after muting
+                    saveUsers(users);
                 } catch (error) {
                     const errorMsg = await message.channel.send(`That Noob <@${message.author.id}> failed to count 5 times, but their role is too high for me to mute them! 🙄`);
                     setTimeout(() => errorMsg.delete().catch(() => {}), 10000);
                     userData.strikes = 0; // Still reset their strikes so it doesn't spam
+                    saveUsers(users);
                 }
             }
-            
-            // Reset scores for all users in the server
-            if (users[guildId]) {
-                for (const uid in users[guildId]) {
-                    users[guildId][uid].score = 0;
-                }
-            }
-            
-            saveUsers(users);
 
             // Remove all counting roles from every member
-            removeAllCountingRoles(message.guild, servers[guildId]).catch(err =>
+            removeAllCountingRoles(message.guild, serverConfig).catch(err =>
                 console.error('Error removing counting roles on reset:', err)
             );
 
             return;
-        }
+        } else {
+            // Just issue a warning and don't reset
+            saveServers(servers);
+            saveUsers(users); // save strikes
 
-        // 3. Number is correct!
-        // Update server config
-        serverConfig.currentCount = expectedNumber;
-        serverConfig.warns = 0; // Reset warns on a correct number
-        serverConfig.lastUserId = message.author.id;
-        
-        if (!serverConfig.lastMessages) {
-            serverConfig.lastMessages = {};
-        }
-        serverConfig.lastMessages[message.id] = expectedNumber;
-
-        // Keep lastMessages size bounded (e.g., max 100 entries)
-        const keys = Object.keys(serverConfig.lastMessages);
-        if (keys.length > 100) {
-            delete serverConfig.lastMessages[keys[0]];
-        }
-
-        saveServers(servers);
-        
-        // Update user score
-        userData.score += 1;
-        saveUsers(users);
-        
-        // Add tick reaction
-        await message.react('✅').catch(() => {});
-
-        // 4. Server Levels Check
-        if (serverConfig.levels && serverConfig.levels[expectedNumber]) {
-            const levelReached = serverConfig.levels[expectedNumber];
-            const levelEmbed = new EmbedBuilder()
-                .setTitle('🎉 Server Level Up! 🎉')
-                .setColor('#ffd700') // Gold color
-                .setDescription(`Woah! **${message.guild.name}** reached **Level ${levelReached}** by hitting ${expectedNumber} counts! Keep it up! 🚀`);
+            const warnEmbed = new EmbedBuilder()
+                .setColor('#ffa500')
+                .setDescription(`Hey! <@${message.author.id}> typed **${content}** instead of **${expectedNumber}**.\n\n⚠️ **Warning ${serverConfig.warns}/${maxWarns}**! The next number is still **${expectedNumber}**.`);
             
-            await message.channel.send({ embeds: [levelEmbed] });
-        }
+            await message.channel.send({ embeds: [warnEmbed] }).catch(() => {});
+            await message.delete().catch(() => {});
 
-        // 5. Role Management
-        await manageRoles(message.guild, message.member, userData.score, message.channel, serverConfig.roles);
+            if (userData.strikes >= 5) {
+                try {
+                    const member = await message.guild.members.fetch(message.author.id);
+                    await member.timeout(120000, '5 mistakes in channel');
+                    const muteMsg = await message.channel.send(`<@${message.author.id}> has been muted for 2 minutes for failing to count 5 times.`);
+                    setTimeout(() => muteMsg.delete().catch(() => {}), 10000);
+                    userData.strikes = 0;
+                    saveUsers(users);
+                } catch (error) {
+                    const errorMsg = await message.channel.send(`That Noob <@${message.author.id}> failed to count 5 times, but their role is too high for me to mute them! 🙄`);
+                    setTimeout(() => errorMsg.delete().catch(() => {}), 10000);
+                    userData.strikes = 0;
+                    saveUsers(users);
+                }
+            }
+
+            return; // stop execution here so count isn't updated
+        }
     }
-};
+
+    // 3. Number is correct!
+    // Update server config
+    serverConfig.currentCount = expectedNumber;
+    // NOTE: Warnings are NOT reset on correct counts so global warning cycle persists across the server
+    serverConfig.lastUserId = message.author.id;
+    
+    if (!serverConfig.lastMessages) {
+        serverConfig.lastMessages = {};
+    }
+    serverConfig.lastMessages[message.id] = expectedNumber;
+
+    // Keep lastMessages size bounded (e.g., max 100 entries)
+    const keys = Object.keys(serverConfig.lastMessages);
+    if (keys.length > 100) {
+        delete serverConfig.lastMessages[keys[0]];
+    }
+
+    saveServers(servers);
+    
+    // Update user score
+    userData.score = (userData.score || 0) + 1;
+    saveUsers(users);
+    
+    // Add tick reaction
+    await message.react('✅').catch(() => {});
+
+    // 4. Server Levels Check
+    if (serverConfig.levels && serverConfig.levels[expectedNumber]) {
+        const levelReached = serverConfig.levels[expectedNumber];
+        const levelEmbed = new EmbedBuilder()
+            .setTitle('🎉 Server Level Up! 🎉')
+            .setColor('#ffd700') // Gold color
+            .setDescription(`Woah! **${message.guild.name}** reached **Level ${levelReached}** by hitting ${expectedNumber} counts! Keep it up! 🚀`);
+        
+        await message.channel.send({ embeds: [levelEmbed] }).catch(() => {});
+    }
+
+    // 5. Role Management
+    await manageRoles(message.guild, message.member, userData.score, message.channel, serverConfig.roles);
+}
 
 async function manageRoles(guild, member, score, channel, serverRoles) {
     if (!member) return;

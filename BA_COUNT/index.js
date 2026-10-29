@@ -269,14 +269,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 client.once('ready', async () => {
     console.log(`✅ [Bot2] Counting Bot (${client.user.tag}) is online`);
-
-    // Initialize AI Daily Quote Scheduler
-    try {
-        const { initQuoteScheduler } = require('./utils/quoteScheduler.js');
-        initQuoteScheduler(client);
-    } catch (err) {
-        console.error("❌ [Bot2] Failed to initialize quote scheduler:", err);
-    }
 });
 
 client.login(process.env.COUNTING_BOT_TOKEN);

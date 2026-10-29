@@ -1,0 +1,20 @@
+{
+  "default": {
+    "enabled": true,
+    "logChannelId": "",
+    "muteDurationMinutes": 15,
+    "blockedWords": [
+      "dalal",
+      "dalals"
+    ]
+  },
+  "test_guild_123": {
+    "enabled": true,
+    "logChannelId": "test_log_channel_999",
+    "muteDurationMinutes": 15,
+    "blockedWords": [
+      "dalal",
+      "dalals"
+    ]
+  }
+}
