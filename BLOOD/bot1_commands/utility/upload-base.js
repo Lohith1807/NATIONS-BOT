@@ -1,6 +1,7 @@
 const {
     SlashCommandBuilder,
     AttachmentBuilder,
+    MessageFlags,
 } = require('discord.js');
 const { getEmoji, getEmojiObject } = require('../../utils/botemoji.js');
 const {
@@ -11,6 +12,8 @@ const {
     addUpload,
     buildBaseButtons,
 } = require('../../utils/baseService.js');
+
+const BASE_POST_CHANNEL_ID = process.env.BASE_POST_CHANNEL_ID || '1468223443475501271';
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -45,7 +48,7 @@ module.exports = {
         if (!linkValidation.valid) {
             return interaction.reply({
                 content: `${getEmoji('bluex')} **Invalid Clash of Clans base link.**\n\n${getEmoji('arrow')} ${linkValidation.reason}\n${getEmoji('parrow')} Please provide a valid Clash of Clans layout link.`,
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -54,12 +57,12 @@ module.exports = {
         if (!imageValidation.valid) {
             return interaction.reply({
                 content: `${getEmoji('bluex')} **Invalid base image.**\n\n${getEmoji('arrow')} ${imageValidation.reason}\n${getEmoji('parrow')} Please upload a valid image file (PNG, JPG, WEBP).`,
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
             });
         }
 
         // ─── Defer Ephemerally (slash command won't post publicly) ───────
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         try {
             // ─── Parse Link ─────────────────────────────────────────────
@@ -86,7 +89,7 @@ module.exports = {
                 discord_user_id: interaction.user.id,
                 discord_username: interaction.user.tag,
                 guild_id: interaction.guild?.id || null,
-                channel_id: interaction.channel?.id || null,
+                channel_id: null,
                 base_link: link,
                 base_type: baseType,
                 town_hall_level: thLevel,
@@ -108,14 +111,25 @@ module.exports = {
                 files.push(attachment);
             }
 
-            // ─── Send Separately to Channel ─────────────────────────────
-            const sentMessage = await interaction.channel.send({
+            // ─── Fetch Dedicated Base Post Channel ───────────────────────
+            const targetChannel = interaction.guild?.channels.cache.get(BASE_POST_CHANNEL_ID) ||
+                await interaction.guild?.channels.fetch(BASE_POST_CHANNEL_ID).catch(() => null);
+
+            if (!targetChannel) {
+                return interaction.editReply({
+                    content: `${getEmoji('bluex')} **Target base channel not found.**\n\nCould not locate channel <#${BASE_POST_CHANNEL_ID}> (\`${BASE_POST_CHANNEL_ID}\`). Please ensure the channel exists and the bot has permissions to view and send messages in it.`,
+                });
+            }
+
+            // ─── Send to Dedicated Base Channel ─────────────────────────
+            const sentMessage = await targetChannel.send({
                 content: messageContent,
                 files: files,
                 components: [buttonRow],
             });
 
             // ─── Update Message Info and Save Record ────────────────────
+            baseRecord.channel_id = targetChannel.id;
             baseRecord.message_id = sentMessage.id;
             baseRecord.message_url = sentMessage.url;
             try {
@@ -126,7 +140,7 @@ module.exports = {
 
             // ─── Ephemeral Confirmation to Uploader ─────────────────────
             await interaction.editReply({
-                content: `${getEmoji('gtick')} **Base layout uploaded and posted successfully!** [Jump to message](${sentMessage.url})`,
+                content: `${getEmoji('gtick')} **Base layout uploaded successfully!** Posted in <#${targetChannel.id}>. [Jump to message](${sentMessage.url})`,
             });
 
 
@@ -147,7 +161,7 @@ module.exports = {
             console.error('❌ [upload-base] Error details:', JSON.stringify(logData));
 
             // User-facing error
-            const errorMessage = `${getEmoji('bluex')} **Unable to post the base.**\n\n${getEmoji('arrow')} Something went wrong while sending to this channel.\n${getEmoji('parrow')} Please check bot permissions and try again.`;
+            const errorMessage = `${getEmoji('bluex')} **Unable to post the base.**\n\n${getEmoji('arrow')} Something went wrong while sending to <#${BASE_POST_CHANNEL_ID}>.\n${getEmoji('parrow')} Please check bot permissions in the target channel and try again.`;
 
             try {
                 await interaction.editReply({ content: errorMessage });
