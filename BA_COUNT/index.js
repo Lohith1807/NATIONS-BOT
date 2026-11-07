@@ -25,6 +25,104 @@ for (const file of commandFiles) {
     }
 }
 
+// ─── Quiz Manager Loader (Safe & Self-Healing) ─────────────────────────────
+function getQuizManager() {
+    const possiblePaths = [
+        path.join(__dirname, 'utils', 'quizManager.js'),
+        path.join(__dirname, 'utils', 'quizmanager.js'),
+        path.join(__dirname, 'utils', 'quizManager'),
+        path.join(__dirname, 'utils', 'quizmanager')
+    ];
+    for (const p of possiblePaths) {
+        try {
+            if (fs.existsSync(p)) return require(p);
+        } catch (_) {}
+    }
+    try {
+        return require('./utils/quizManager');
+    } catch (_) {}
+    try {
+        return require('./utils/quizmanager');
+    } catch (_) {}
+
+    // Self-healing fallback: If the file is missing on the remote server, recreate it automatically!
+    try {
+        const utilsDir = path.join(__dirname, 'utils');
+        if (!fs.existsSync(utilsDir)) fs.mkdirSync(utilsDir, { recursive: true });
+        const targetPath = path.join(utilsDir, 'quizManager.js');
+        const code = `const fs = require('fs');
+const path = require('path');
+const dataFilePath = path.join(__dirname, '..', 'data', 'quizzes.json');
+
+function init() {
+    const dir = path.dirname(dataFilePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(dataFilePath)) fs.writeFileSync(dataFilePath, JSON.stringify({ answeredUsers: {}, activeQuizzes: {} }, null, 2));
+}
+
+function getQuizData() {
+    init();
+    try {
+        const data = JSON.parse(fs.readFileSync(dataFilePath, 'utf8'));
+        data.answeredUsers = data.answeredUsers || {};
+        data.activeQuizzes = data.activeQuizzes || {};
+        return data;
+    } catch (err) {
+        return { answeredUsers: {}, activeQuizzes: {} };
+    }
+}
+
+function saveQuizData(data) {
+    init();
+    fs.writeFileSync(dataFilePath, JSON.stringify(data, null, 2));
+}
+
+function hasUserAnswered(quizId, userId) {
+    const data = getQuizData();
+    return !!(data.answeredUsers[quizId] && data.answeredUsers[quizId].includes(userId));
+}
+
+function markUserAnswered(quizId, userId) {
+    const data = getQuizData();
+    if (!data.answeredUsers[quizId]) data.answeredUsers[quizId] = [];
+    if (!data.answeredUsers[quizId].includes(userId)) {
+        data.answeredUsers[quizId].push(userId);
+        saveQuizData(data);
+    }
+}
+
+function saveActiveQuiz(quizId, quizInfo) {
+    const data = getQuizData();
+    data.activeQuizzes[quizId] = quizInfo;
+    saveQuizData(data);
+}
+
+function getActiveQuiz(quizId) {
+    const data = getQuizData();
+    return data.activeQuizzes[quizId];
+}
+
+module.exports = { hasUserAnswered, markUserAnswered, saveActiveQuiz, getActiveQuiz };
+`;
+        fs.writeFileSync(targetPath, code, 'utf8');
+        return require(targetPath);
+    } catch (err) {
+        console.error('❌ [BA_COUNT] Failed to auto-create quizManager.js:', err);
+    }
+
+    // In-memory fallback if disk write failed
+    const inMemoryQuizzes = { answeredUsers: {}, activeQuizzes: {} };
+    return {
+        hasUserAnswered: (quizId, userId) => !!(inMemoryQuizzes.answeredUsers[quizId] && inMemoryQuizzes.answeredUsers[quizId].includes(userId)),
+        markUserAnswered: (quizId, userId) => {
+            if (!inMemoryQuizzes.answeredUsers[quizId]) inMemoryQuizzes.answeredUsers[quizId] = [];
+            inMemoryQuizzes.answeredUsers[quizId].push(userId);
+        },
+        saveActiveQuiz: (quizId, quizInfo) => { inMemoryQuizzes.activeQuizzes[quizId] = quizInfo; },
+        getActiveQuiz: (quizId) => inMemoryQuizzes.activeQuizzes[quizId]
+    };
+}
+
 // Pass messages to our counting logic file
 client.on(Events.MessageCreate, async (message) => {
     const messageCreateEvent = require('./events/messageCreate');
@@ -91,7 +189,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             const parts = interaction.customId.split('_');
             const roleId = parts[1];
             const noOfQuestions = parseInt(parts[2], 10);
-            const { saveActiveQuiz } = require('./utils/quizManager');
+            const { saveActiveQuiz } = getQuizManager();
             
             const questions = [];
             for (let i = 1; i <= noOfQuestions; i++) {
@@ -125,7 +223,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             });
         } else if (interaction.customId.startsWith('quizSubmitModal_')) {
             const quizId = interaction.customId.split('_')[1];
-            const { getActiveQuiz, markUserAnswered } = require('./utils/quizManager');
+            const { getActiveQuiz, markUserAnswered } = getQuizManager();
             
             const quizInfo = getActiveQuiz(quizId);
             if (!quizInfo) {
@@ -174,7 +272,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } else if (interaction.isButton()) {
         if (interaction.customId.startsWith('quizAnswerBtn_')) {
             const quizId = interaction.customId.split('_')[1];
-            const { getActiveQuiz, hasUserAnswered } = require('./utils/quizManager');
+            const { getActiveQuiz, hasUserAnswered } = getQuizManager();
             
             const quizInfo = getActiveQuiz(quizId);
             if (!quizInfo) {
