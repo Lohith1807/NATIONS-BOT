@@ -27,22 +27,27 @@ for (const file of commandFiles) {
 
 // ─── Quiz Manager Loader (Safe & Self-Healing) ─────────────────────────────
 function getQuizManager() {
-    const possiblePaths = [
-        path.join(__dirname, 'utils', 'quizManager.js'),
-        path.join(__dirname, 'utils', 'quizmanager.js'),
-        path.join(__dirname, 'utils', 'quizManager'),
-        path.join(__dirname, 'utils', 'quizmanager')
-    ];
-    for (const p of possiblePaths) {
+    const canonicalPath = path.join(__dirname, 'utils', 'quizManager.js');
+    if (fs.existsSync(canonicalPath)) {
         try {
-            if (fs.existsSync(p)) return require(p);
+            return require(canonicalPath);
         } catch (_) {}
     }
+
     try {
         return require('./utils/quizManager');
     } catch (_) {}
+
+    // Dynamic case lookup on Linux without conflicting static string imports
     try {
-        return require('./utils/quizmanager');
+        const utilsDir = path.join(__dirname, 'utils');
+        if (fs.existsSync(utilsDir)) {
+            const files = fs.readdirSync(utilsDir);
+            const match = files.find(f => f.toLowerCase() === 'quizmanager.js');
+            if (match) {
+                return require(path.join(utilsDir, match));
+            }
+        }
     } catch (_) {}
 
     // Self-healing fallback: If the file is missing on the remote server, recreate it automatically!
