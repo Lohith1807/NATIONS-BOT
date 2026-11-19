@@ -34,8 +34,8 @@ module.exports = {
         .addAttachmentOption(option =>
             option
                 .setName('image')
-                .setDescription('Base layout image / screenshot')
-                .setRequired(true)
+                .setDescription('Base layout image / screenshot (optional)')
+                .setRequired(false)
         ),
 
     async execute(interaction) {
@@ -52,13 +52,15 @@ module.exports = {
             });
         }
 
-        // ─── Validate Image ─────────────────────────────────────────────
-        const imageValidation = validateBaseImage(imageAttachment);
-        if (!imageValidation.valid) {
-            return interaction.reply({
-                content: `${getEmoji('bluex')} **Invalid base image.**\n\n${getEmoji('arrow')} ${imageValidation.reason}\n${getEmoji('parrow')} Please upload a valid image file (PNG, JPG, WEBP).`,
-                flags: MessageFlags.Ephemeral,
-            });
+        // ─── Validate Image (if provided) ───────────────────────────────
+        if (imageAttachment) {
+            const imageValidation = validateBaseImage(imageAttachment);
+            if (!imageValidation.valid) {
+                return interaction.reply({
+                    content: `${getEmoji('bluex')} **Invalid base image.**\n\n${getEmoji('arrow')} ${imageValidation.reason}\n${getEmoji('parrow')} Please upload a valid image file (PNG, JPG, WEBP).`,
+                    flags: MessageFlags.Ephemeral,
+                });
+            }
         }
 
         // ─── Defer Ephemerally (slash command won't post publicly) ───────
@@ -67,17 +69,18 @@ module.exports = {
         try {
             // ─── Parse Link ─────────────────────────────────────────────
             const parsed = parseBaseLink(link);
-            const { thLevel, layoutType, fullId } = parsed;
+            const { thLevel, layoutType, fullId, isBH } = parsed;
             const layoutHash = hashLayout(fullId);
 
-            // ─── Resolve TH Emoji (default to clancastle if not available) ─
+            // ─── Resolve TH / BH Emoji ──────────────────────────────────
+            const hallName = isBH ? 'Builder Hall' : 'Town Hall';
             const thEmojiName = `th${thLevel}`;
             const resolvedEmojiKey = getEmojiObject(thEmojiName) ? thEmojiName : 'clancastle';
             const thEmoji = getEmoji(resolvedEmojiKey);
 
             // ─── Format Non-Embed Message (No Link in Text) ──────────────
             const messageContent =
-                `## ${thEmoji} Town Hall ${thLevel}\n` +
+                `## ${thEmoji} ${hallName} ${thLevel}\n` +
                 `${getEmoji('arrow')} **Base Type :** ${baseType}\n\n` +
                 `-# Uploaded by <@${interaction.user.id}>`;
 

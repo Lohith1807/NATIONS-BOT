@@ -50,7 +50,7 @@ function validateBaseLink(link) {
         return { valid: false, reason: 'No link provided.' };
     }
 
-    const trimmed = link.trim();
+    const trimmed = link.trim().replace(/[)\]}>,."';]+$/, '');
 
     // Protocol check
     if (!trimmed.startsWith('https://') && !trimmed.startsWith('http://')) {
@@ -66,31 +66,32 @@ function validateBaseLink(link) {
 
     // Domain check
     const validHosts = ['link.clashofclans.com'];
-    if (!validHosts.includes(url.hostname)) {
+    if (!validHosts.includes(url.hostname.toLowerCase())) {
         return { valid: false, reason: 'Not a Clash of Clans link.' };
     }
 
-    // Action check
+    // Action check (case-insensitive)
     const action = url.searchParams.get('action');
-    if (!action || action !== 'OpenLayout') {
+    if (!action || action.toLowerCase() !== 'openlayout') {
         return { valid: false, reason: 'Not a base layout link.' };
     }
 
     // ID check
-    const id = url.searchParams.get('id');
-    if (!id) {
+    const rawId = url.searchParams.get('id');
+    if (!rawId) {
         return { valid: false, reason: 'Missing layout ID.' };
     }
+    const id = decodeURIComponent(rawId);
 
-    // TH level in ID
-    const thMatch = id.match(/^TH(\d+):/i);
-    if (!thMatch) {
-        return { valid: false, reason: 'Cannot determine Town Hall level from link.' };
+    // TH/BH level in ID (supports Town Hall up to 25 and Builder Hall)
+    const hallMatch = id.match(/^(?:TH|BH)(\d+):/i);
+    if (!hallMatch) {
+        return { valid: false, reason: 'Cannot determine Town Hall / Builder Hall level from link.' };
     }
 
-    const thLevel = parseInt(thMatch[1], 10);
-    if (thLevel < 1 || thLevel > 18) {
-        return { valid: false, reason: `Invalid Town Hall level: ${thLevel}` };
+    const hallLevel = parseInt(hallMatch[1], 10);
+    if (hallLevel < 1 || hallLevel > 50) {
+        return { valid: false, reason: `Invalid Town Hall / Builder Hall level: ${hallLevel}` };
     }
 
     return { valid: true };
@@ -128,22 +129,25 @@ function validateBaseImage(attachment) {
  * @returns {{ thLevel: number, layoutType: string, layoutId: string, fullId: string }}
  */
 function parseBaseLink(link) {
-    const url = new URL(link.trim());
-    const id = url.searchParams.get('id');
+    const trimmed = link.trim().replace(/[)\]}>,."';]+$/, '');
+    const url = new URL(trimmed);
+    const rawId = url.searchParams.get('id');
+    const id = decodeURIComponent(rawId);
 
-    // ID format: TH{N}:{TYPE}:{BASE64_ID}
+    // ID format: TH{N}:{TYPE}:{BASE64_ID} or BH{N}:{TYPE}:{BASE64_ID}
     // Examples: TH17:WB:AAAAMwAAAAJvKqSJR0K6j5vKXNzKC0Eo
     //           TH15:HV:AAAAVAAAAAHixZ2x1n8Q5kcjKac5Ta3R
     const parts = id.split(':');
 
-    const thMatch = parts[0].match(/^TH(\d+)$/i);
-    const thLevel = thMatch ? parseInt(thMatch[1], 10) : null;
+    const hallMatch = parts[0].match(/^(?:TH|BH)(\d+)$/i);
+    const thLevel = hallMatch ? parseInt(hallMatch[1], 10) : null;
+    const isBH = parts[0].toUpperCase().startsWith('BH');
 
-    const layoutType = parts[1] || 'Unknown';
+    const layoutType = parts[1] || (isBH ? 'BB' : 'Unknown');
     const layoutId = parts.slice(2).join(':') || '';
     const fullId = id;
 
-    return { thLevel, layoutType, layoutId, fullId };
+    return { thLevel, layoutType, layoutId, fullId, isBH };
 }
 
 /**
