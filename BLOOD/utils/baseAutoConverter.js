@@ -56,11 +56,11 @@ async function handleAutoBaseMessage(message) {
         const hasEmoji = Boolean(getEmojiObject(thEmojiName));
         const thPrefix = hasEmoji ? `${getEmoji(thEmojiName)} ` : '';
 
-        // 5. Format Post Message Content
+        // 5. Format Post Message Content (shows 'From Blood Alliance Staff' when converted without command)
         const messageContent =
             `## ${thPrefix}${hallName} ${thLevel}\n` +
             `${getEmoji('arrow')} **Base Type :** ${baseType}\n\n` +
-            `-# Uploaded by <@${message.author.id}>`;
+            `-# From Blood Alliance Staff`;
 
         // 6. Look for image attachment if present (optional screenshot)
         let imageAttachment = null;
