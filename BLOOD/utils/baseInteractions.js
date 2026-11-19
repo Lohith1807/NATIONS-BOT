@@ -51,8 +51,7 @@ async function handleBaseInteractions(interaction) {
 
             // Build launch link button
             const thEmojiName = `th${record.town_hall_level}`;
-            const resolvedEmojiKey = getEmojiObject(thEmojiName) ? thEmojiName : 'clancastle';
-            const linkEmojiObj = getEmojiObject(resolvedEmojiKey);
+            const linkEmojiObj = getEmojiObject(thEmojiName);
 
             const launchBtn = new ButtonBuilder()
                 .setLabel('Launch Clash of Clans')

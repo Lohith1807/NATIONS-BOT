@@ -72,15 +72,15 @@ module.exports = {
             const { thLevel, layoutType, fullId, isBH } = parsed;
             const layoutHash = hashLayout(fullId);
 
-            // ─── Resolve TH / BH Emoji ──────────────────────────────────
+            // ─── Resolve TH / BH Emoji (use emoji if available, otherwise just mention name)
             const hallName = isBH ? 'Builder Hall' : 'Town Hall';
             const thEmojiName = `th${thLevel}`;
-            const resolvedEmojiKey = getEmojiObject(thEmojiName) ? thEmojiName : 'clancastle';
-            const thEmoji = getEmoji(resolvedEmojiKey);
+            const hasEmoji = Boolean(getEmojiObject(thEmojiName));
+            const thPrefix = hasEmoji ? `${getEmoji(thEmojiName)} ` : '';
 
             // ─── Format Non-Embed Message (No Link in Text) ──────────────
             const messageContent =
-                `## ${thEmoji} ${hallName} ${thLevel}\n` +
+                `## ${thPrefix}${hallName} ${thLevel}\n` +
                 `${getEmoji('arrow')} **Base Type :** ${baseType}\n\n` +
                 `-# Uploaded by <@${interaction.user.id}>`;
 

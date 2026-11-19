@@ -50,15 +50,15 @@ async function handleAutoBaseMessage(message) {
         textWithoutLink = textWithoutLink.replace(/^(?:base\s*type|type)\s*[:=-]\s*/i, '').trim();
         const baseType = textWithoutLink || defaultTypeName;
 
-        // 4. Resolve Town Hall / Builder Hall Emoji
+        // 4. Resolve Town Hall / Builder Hall Emoji (use emoji if available, otherwise just mention name)
         const hallName = isBH ? 'Builder Hall' : 'Town Hall';
         const thEmojiName = `th${thLevel}`;
-        const resolvedEmojiKey = getEmojiObject(thEmojiName) ? thEmojiName : 'clancastle';
-        const thEmoji = getEmoji(resolvedEmojiKey);
+        const hasEmoji = Boolean(getEmojiObject(thEmojiName));
+        const thPrefix = hasEmoji ? `${getEmoji(thEmojiName)} ` : '';
 
         // 5. Format Post Message Content
         const messageContent =
-            `## ${thEmoji} ${hallName} ${thLevel}\n` +
+            `## ${thPrefix}${hallName} ${thLevel}\n` +
             `${getEmoji('arrow')} **Base Type :** ${baseType}\n\n` +
             `-# Uploaded by <@${message.author.id}>`;
 

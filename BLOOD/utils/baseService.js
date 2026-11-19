@@ -83,15 +83,15 @@ function validateBaseLink(link) {
     }
     const id = decodeURIComponent(rawId);
 
-    // TH/BH level in ID (supports Town Hall up to 25 and Builder Hall)
+    // TH/BH level in ID (supports any Town Hall and Builder Hall level)
     const hallMatch = id.match(/^(?:TH|BH)(\d+):/i);
     if (!hallMatch) {
         return { valid: false, reason: 'Cannot determine Town Hall / Builder Hall level from link.' };
     }
 
     const hallLevel = parseInt(hallMatch[1], 10);
-    if (hallLevel < 1 || hallLevel > 50) {
-        return { valid: false, reason: `Invalid Town Hall / Builder Hall level: ${hallLevel}` };
+    if (!hallLevel || hallLevel < 1) {
+        return { valid: false, reason: `Invalid Town Hall level: ${hallMatch[1]}` };
     }
 
     return { valid: true };
@@ -209,8 +209,7 @@ function buildBaseButtons(record) {
     const layoutHash = record.id || record.layout_hash;
     const thLevel = record.town_hall_level;
     const thEmojiName = `th${thLevel}`;
-    const resolvedEmojiKey = getEmojiObject(thEmojiName) ? thEmojiName : 'clancastle';
-    const thEmojiObj = getEmojiObject(resolvedEmojiKey);
+    const thEmojiObj = getEmojiObject(thEmojiName);
 
     // 1. "Open" Button
     const openBtn = new ButtonBuilder()
