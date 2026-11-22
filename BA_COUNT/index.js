@@ -1,6 +1,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-const { Client, GatewayIntentBits, Collection, Events, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 
 const client = new Client({
@@ -232,47 +232,89 @@ client.on(Events.InteractionCreate, async (interaction) => {
             
             const quizInfo = getActiveQuiz(quizId);
             if (!quizInfo) {
-                return interaction.reply({ content: 'This quiz is no longer active.', ephemeral: true });
+                return interaction.reply({ content: 'This quiz is no longer active.', flags: MessageFlags.Ephemeral });
             }
 
             markUserAnswered(quizId, interaction.user.id);
             
             const answers = [];
             for (let i = 1; i <= quizInfo.questions.length; i++) {
-                answers.push(interaction.fields.getTextInputValue(`answer_${i}`));
+                try {
+                    const ans = interaction.fields.getTextInputValue(`answer_${i}`);
+                    answers.push(ans || 'No answer provided');
+                } catch (_) {
+                    answers.push('No answer provided');
+                }
             }
 
-            await interaction.reply({ content: 'Your answers have been submitted!', ephemeral: true });
+            await interaction.reply({ content: 'Your answers have been submitted!', flags: MessageFlags.Ephemeral });
 
-            const logChannelId = process.env.QUIZ_LOG_CHANNEL;
-            if (!logChannelId) return;
+            // ─── Log to Dedicated Quiz Log Channel ─────────────────────────
+            const logChannelId = process.env.QUIZ_LOG_CHANNEL || '1533120195739123762';
+            console.log(`[Quiz] 📝 User ${interaction.user.tag} (${interaction.user.id}) submitted answers for quiz ${quizId}. Logging to channel ${logChannelId}...`);
 
-            const logChannel = await interaction.client.channels.fetch(logChannelId).catch(() => null);
-            if (!logChannel) return;
+            let logChannel = null;
+            try {
+                logChannel = interaction.guild?.channels.cache.get(logChannelId) ||
+                    interaction.client.channels.cache.get(logChannelId) ||
+                    await interaction.client.channels.fetch(logChannelId).catch(err => {
+                        console.error(`❌ [Quiz] Error fetching log channel ${logChannelId}:`, err.message);
+                        return null;
+                    });
+            } catch (chanErr) {
+                console.error(`❌ [Quiz] Unexpected error getting log channel:`, chanErr.message);
+            }
 
+            if (!logChannel) {
+                console.error(`❌ [Quiz] Could not access quiz log channel <#${logChannelId}> (${logChannelId}). Check bot permissions in this channel!`);
+                return;
+            }
+
+            const username = interaction.user.displayName || interaction.user.username || interaction.user.tag;
             const logEmbed = new EmbedBuilder()
-                .setTitle('Quiz Answers Submitted')
-                .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
-                .setColor('Yellow')
+                .setTitle('📝 Quiz Answers Submitted')
+                .setAuthor({ 
+                    name: `${username} (${interaction.user.tag})`, 
+                    iconURL: interaction.user.displayAvatarURL() 
+                })
+                .setColor('#F1C40F')
+                .addFields({ name: '👤 Submitter', value: `<@${interaction.user.id}> (\`${interaction.user.id}\`)`, inline: false })
                 .setTimestamp();
             
             quizInfo.questions.forEach((q, index) => {
-                logEmbed.addFields({ name: `Q: ${q}`, value: `A: ${answers[index]}` });
+                const questionText = (q && q.length > 250) ? q.substring(0, 247) + '...' : (q || `Question ${index + 1}`);
+                const answerRaw = answers[index] || 'No answer provided';
+                const answerText = answerRaw.length > 1020 ? answerRaw.substring(0, 1017) + '...' : answerRaw;
+                logEmbed.addFields({ 
+                    name: `❓ ${questionText}`, 
+                    value: `💬 ${answerText}` 
+                });
             });
 
             const tickBtn = new ButtonBuilder()
                 .setCustomId(`quizTickBtn_${interaction.user.id}`)
-                .setLabel('✔️')
+                .setLabel('Correct')
+                .setEmoji('✅')
                 .setStyle(ButtonStyle.Success);
             
             const wrongBtn = new ButtonBuilder()
                 .setCustomId(`quizWrongBtn_${interaction.user.id}`)
-                .setLabel('❌')
+                .setLabel('Incorrect')
+                .setEmoji('❌')
                 .setStyle(ButtonStyle.Danger);
             
             const actionRow = new ActionRowBuilder().addComponents(tickBtn, wrongBtn);
 
-            await logChannel.send({ embeds: [logEmbed], components: [actionRow] });
+            try {
+                await logChannel.send({ 
+                    content: `🔔 **New Quiz Submission** from <@${interaction.user.id}>:`,
+                    embeds: [logEmbed], 
+                    components: [actionRow] 
+                });
+                console.log(`✅ [Quiz] Successfully logged quiz answers for ${interaction.user.tag} in #${logChannel.name || logChannelId}`);
+            } catch (sendErr) {
+                console.error(`❌ [Quiz] Failed to send log to channel #${logChannel.name || logChannelId}:`, sendErr.message);
+            }
         }
     } else if (interaction.isButton()) {
         if (interaction.customId.startsWith('quizAnswerBtn_')) {
@@ -281,15 +323,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
             
             const quizInfo = getActiveQuiz(quizId);
             if (!quizInfo) {
-                return interaction.reply({ content: 'This quiz is no longer active.', ephemeral: true });
+                return interaction.reply({ content: 'This quiz is no longer active.', flags: MessageFlags.Ephemeral });
             }
 
-            if (!interaction.member.roles.cache.has(quizInfo.roleId)) {
-                return interaction.reply({ content: `Only users with the <@&${quizInfo.roleId}> role can answer this quiz!`, ephemeral: true });
+            if (quizInfo.roleId && interaction.member && !interaction.member.roles.cache.has(quizInfo.roleId)) {
+                return interaction.reply({ content: `Only users with the <@&${quizInfo.roleId}> role can answer this quiz!`, flags: MessageFlags.Ephemeral });
             }
 
             if (hasUserAnswered(quizId, interaction.user.id)) {
-                return interaction.reply({ content: 'You have already answered this quiz!', ephemeral: true });
+                return interaction.reply({ content: 'You have already answered this quiz!', flags: MessageFlags.Ephemeral });
             }
 
             const modal = new ModalBuilder()
@@ -297,9 +339,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 .setTitle('Submit Your Answers');
 
             quizInfo.questions.forEach((q, index) => {
+                const label = q.length > 45 ? q.substring(0, 42) + '...' : q;
                 const answerInput = new TextInputBuilder()
                     .setCustomId(`answer_${index + 1}`)
-                    .setLabel(q.length > 45 ? q.substring(0, 42) + '...' : q)
+                    .setLabel(label || `Question ${index + 1}`)
                     .setStyle(TextInputStyle.Paragraph)
                     .setRequired(true);
                 
@@ -311,13 +354,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
             const isTick = interaction.customId.startsWith('quizTickBtn_');
             const targetUserId = interaction.customId.split('_')[1];
 
-            const adminRoles = process.env.ADMIN_ROLES_ID ? process.env.ADMIN_ROLES_ID.split(',') : [];
-            const modRoles = process.env.MOD_ROLES_IDS ? process.env.MOD_ROLES_IDS.split(',') : [];
+            const adminRoles = (process.env.ADMIN_ROLES_ID || process.env.ADMIN_ROLE_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+            const modRoles = (process.env.MOD_ROLES_IDS || process.env.STAFF_ROLE || '').split(',').map(s => s.trim()).filter(Boolean);
             const allowedRoles = [...adminRoles, ...modRoles];
 
-            const hasPermission = interaction.member.roles.cache.some(role => allowedRoles.includes(role.id));
+            const isAdmin = interaction.member && interaction.member.permissions?.has(PermissionFlagsBits.Administrator);
+            const hasPermission = isAdmin || (allowedRoles.length > 0 && interaction.member.roles.cache.some(role => allowedRoles.includes(role.id)));
             if (!hasPermission) {
-                return interaction.reply({ content: 'You do not have permission to use this button.', ephemeral: true });
+                return interaction.reply({ content: 'You do not have permission to use this button.', flags: MessageFlags.Ephemeral });
             }
 
             const targetUser = await interaction.client.users.fetch(targetUserId).catch(() => null);
@@ -335,25 +379,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
                     await targetUser.send({ embeds: [embed] }).catch(() => {});
                 }
-                await interaction.reply({ content: 'User has been notified that their answer is correct.', ephemeral: true });
+                await interaction.reply({ content: 'User has been notified that their answer is correct.', flags: MessageFlags.Ephemeral });
             } else {
-                const staffChannelId = process.env.QUIZ_STAFF_CHANNEL;
-                if (staffChannelId) {
-                    const staffChannel = await interaction.client.channels.fetch(staffChannelId).catch(() => null);
-                    if (staffChannel) {
-                        const embed = new EmbedBuilder()
-                            .setTitle('Incorrect Quiz Answer')
-                            .setDescription(`<@${targetUserId}>, you have answered wrong answer!`)
-                            .setColor('Red');
+                const staffChannelId = process.env.QUIZ_STAFF_CHANNEL || '1417528968294174740';
+                const staffChannel = interaction.guild?.channels.cache.get(staffChannelId) ||
+                    interaction.client.channels.cache.get(staffChannelId) ||
+                    await interaction.client.channels.fetch(staffChannelId).catch(() => null);
 
-                        if (interaction.message.embeds[0] && interaction.message.embeds[0].fields) {
-                            embed.addFields(interaction.message.embeds[0].fields);
-                        }
+                if (staffChannel) {
+                    const embed = new EmbedBuilder()
+                        .setTitle('Incorrect Quiz Answer')
+                        .setDescription(`<@${targetUserId}>, you have answered wrong answer!`)
+                        .setColor('Red');
 
-                        await staffChannel.send({ content: `<@${targetUserId}>`, embeds: [embed] }).catch(() => {});
+                    if (interaction.message.embeds[0] && interaction.message.embeds[0].fields) {
+                        embed.addFields(interaction.message.embeds[0].fields);
                     }
+
+                    await staffChannel.send({ content: `<@${targetUserId}>`, embeds: [embed] }).catch(() => {});
                 }
-                await interaction.reply({ content: 'Wrong answer logged to staff channel.', ephemeral: true });
+                await interaction.reply({ content: 'Wrong answer logged to staff channel.', flags: MessageFlags.Ephemeral });
             }
 
             // Disable buttons after action
@@ -364,7 +409,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                         row.components.map(btn => ButtonBuilder.from(btn).setDisabled(true))
                     );
                 });
-                await interaction.message.edit({ components: newComponents });
+                await interaction.message.edit({ components: newComponents }).catch(() => {});
             }
         }
     }
