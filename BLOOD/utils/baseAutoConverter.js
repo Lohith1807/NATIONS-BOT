@@ -24,6 +24,9 @@ const BASE_POST_CHANNEL_ID = process.env.BASE_POST_CHANNEL_ID || '14682234434755
 async function handleAutoBaseMessage(message) {
     if (!message || !message.guild || message.author.bot) return false;
 
+    // Only auto-convert messages sent directly inside the dedicated base channel (1468223443475501271)
+    if (message.channel.id !== BASE_POST_CHANNEL_ID) return false;
+
     // 1. Check for Clash of Clans layout link
     const linkMatch = message.content.match(/https?:\/\/link\.clashofclans\.com\/[^\s>]+/i);
     if (!linkMatch) return false;
@@ -102,36 +105,14 @@ async function handleAutoBaseMessage(message) {
             files.push(fileAttachment);
         }
 
-        // 10. Resolve Destination Channel (Dedicated channel 1468223443475501271)
-        const targetChannel = message.guild.channels.cache.get(BASE_POST_CHANNEL_ID) ||
-            await message.guild.channels.fetch(BASE_POST_CHANNEL_ID).catch(() => null);
+        // 10. Post formatted base directly in the channel
+        const sentMessage = await message.channel.send({
+            content: messageContent,
+            files: files,
+            components: [buttonRow],
+        });
 
-        // Fallback to origin channel if dedicated channel cannot be resolved
-        const postChannel = targetChannel || message.channel;
-
-        // 11. Post formatted base into the dedicated channel
-        let sentMessage;
-        try {
-            sentMessage = await postChannel.send({
-                content: messageContent,
-                files: files,
-                components: [buttonRow],
-            });
-        } catch (sendErr) {
-            console.error(`❌ [BaseAutoConverter] Failed to send to channel #${postChannel.name || postChannel.id}:`, sendErr.message);
-            // If posting to targetChannel failed (e.g. missing permissions), attempt posting to origin channel as safety fallback
-            if (postChannel.id !== message.channel.id) {
-                sentMessage = await message.channel.send({
-                    content: messageContent,
-                    files: files,
-                    components: [buttonRow],
-                });
-            } else {
-                throw sendErr;
-            }
-        }
-
-        // 12. Save record to uploadedBases.json
+        // 11. Save record to uploadedBases.json
         baseRecord.channel_id = sentMessage.channel.id;
         baseRecord.message_id = sentMessage.id;
         baseRecord.message_url = sentMessage.url;
@@ -141,20 +122,10 @@ async function handleAutoBaseMessage(message) {
             console.error('❌ [BaseAutoConverter] Failed to save upload record:', dbErr.message);
         }
 
-        // 13. Delete raw user message
+        // 12. Delete raw user message
         await message.delete().catch(() => {});
 
-        // 14. If converted from another channel, leave a brief confirmation notice with jump link
-        if (message.channel.id !== sentMessage.channel.id) {
-            try {
-                const notice = await message.channel.send({
-                    content: `${getEmoji('gtick')} <@${message.author.id}> Your base layout was automatically formatted and posted in <#${sentMessage.channel.id}>! [Jump to base](${sentMessage.url})`,
-                });
-                setTimeout(() => notice.delete().catch(() => {}), 8000);
-            } catch (_) {}
-        }
-
-        console.log(`[BaseAutoConverter] ✅ Automatically posted base (TH${thLevel}) by ${message.author.tag} into #${sentMessage.channel.name || sentMessage.channel.id}`);
+        console.log(`[BaseAutoConverter] ✅ Automatically formatted base (TH${thLevel}) by ${message.author.tag} in #${message.channel.name || message.channel.id}`);
         return true;
     } catch (err) {
         console.error('❌ [BaseAutoConverter] Error converting base message:', err);
