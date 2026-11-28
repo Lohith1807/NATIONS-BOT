@@ -245,7 +245,7 @@ async function handleGiveawayInteractions(interaction) {
                 return interaction.reply({ content: `❌ This giveaway has not ended yet.`, flags: MessageFlags.Ephemeral });
             }
 
-            const spotKey = parts[2];
+            const spotKey = parts[2] || 'all';
             const currentWinners = Array.isArray(gw.finalWinners) && gw.finalWinners.length > 0
                 ? gw.finalWinners
                 : (gw.pendingWinners || []);
@@ -254,29 +254,32 @@ async function handleGiveawayInteractions(interaction) {
             if ((spotKey && spotKey !== 'all') || currentWinners.length <= 1) {
                 const targetIdx = spotKey && spotKey !== 'all' ? parseInt(spotKey, 10) : 0;
                 const userSelect = new UserSelectMenuBuilder()
-                    .setCustomId(`giveaway_pick_user:${gw.id}:${targetIdx}`)
+                    .setCustomId(`giveaway_pick_user:${gw.id}:${targetIdx}:${spotKey}`)
                     .setPlaceholder(`Search and select user for Spot #${targetIdx + 1}...`)
                     .setMinValues(1)
                     .setMaxValues(1);
 
-                const payload = {
-                    content: `${getEmoji('gob')} Search and select the user for **Spot #${targetIdx + 1}** of \`${gw.id}\`:`,
-                    embeds: [],
-                    components: [new ActionRowBuilder().addComponents(userSelect)],
-                };
+                const dropdownRow = new ActionRowBuilder().addComponents(userSelect);
 
                 if (action === 'giveaway_cmd_manual') {
-                    await interaction.update(payload);
+                    await interaction.update({
+                        embeds: [buildRerollPanelEmbed(gw, spotKey, `${getEmoji('gob')} Search and select a participant for **Spot #${targetIdx + 1}** below:`)],
+                        components: [...buildRerollPanelButtons(gw.id, spotKey), dropdownRow],
+                    });
                 } else {
-                    await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+                    await interaction.reply({
+                        content: `${getEmoji('gob')} Search and select the user for **Spot #${targetIdx + 1}** of \`${gw.id}\`:`,
+                        components: [dropdownRow],
+                        flags: MessageFlags.Ephemeral,
+                    });
                 }
                 return true;
             }
 
-            // Multiple winner spots and no specific spot pre-selected -> ask which spot first
+            // Multiple winner spots and no specific spot pre-selected -> show spot dropdown below main embed
             const spotSelect = new StringSelectMenuBuilder()
-                .setCustomId(`giveaway_pick_spot:${gw.id}`)
-                .setPlaceholder('First select which winner spot to change...')
+                .setCustomId(`giveaway_pick_spot:${gw.id}:${spotKey}`)
+                .setPlaceholder('Select which winner spot to change...')
                 .addOptions(
                     currentWinners.map((uid, i) => ({
                         label: `Spot #${i + 1}`,
@@ -285,22 +288,26 @@ async function handleGiveawayInteractions(interaction) {
                     }))
                 );
 
-            const payload = {
-                content: `${getEmoji('gob')} Select which winner **spot** you want to change for \`${gw.id}\`:`,
-                embeds: [],
-                components: [new ActionRowBuilder().addComponents(spotSelect)],
-            };
+            const dropdownRow = new ActionRowBuilder().addComponents(spotSelect);
 
             if (action === 'giveaway_cmd_manual') {
-                await interaction.update(payload);
+                await interaction.update({
+                    embeds: [buildRerollPanelEmbed(gw, spotKey, `${getEmoji('gob')} First select which winner **spot** to change below:`)],
+                    components: [...buildRerollPanelButtons(gw.id, spotKey), dropdownRow],
+                });
             } else {
-                await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+                await interaction.reply({
+                    content: `${getEmoji('gob')} Select which winner **spot** you want to change for \`${gw.id}\`:`,
+                    components: [dropdownRow],
+                    flags: MessageFlags.Ephemeral,
+                });
             }
             return true;
         }
 
-        // 6. Admin picked a spot -> show searchable UserSelectMenu for that spot
+        // 6. Admin picked a spot -> keep main embed open and show searchable UserSelectMenu below
         if (action === 'giveaway_pick_spot') {
+            const spotKey = parts[2] || 'all';
             const spotIndex = parseInt(interaction.values[0], 10);
             const gw = getGiveaway(giveawayId);
             if (!gw || gw.status !== 'ended') {
@@ -311,29 +318,31 @@ async function handleGiveawayInteractions(interaction) {
             }
 
             const userSelect = new UserSelectMenuBuilder()
-                .setCustomId(`giveaway_pick_user:${gw.id}:${spotIndex}`)
+                .setCustomId(`giveaway_pick_user:${gw.id}:${spotIndex}:${spotKey}`)
                 .setPlaceholder(`Search and select user for Spot #${spotIndex + 1}...`)
                 .setMinValues(1)
                 .setMaxValues(1);
 
             await interaction.update({
-                content: `${getEmoji('gob')} Search and select the user for **Spot #${spotIndex + 1}** of \`${gw.id}\`:`,
-                components: [new ActionRowBuilder().addComponents(userSelect)],
+                embeds: [buildRerollPanelEmbed(gw, spotKey, `${getEmoji('gob')} Search and select a participant for **Spot #${spotIndex + 1}** below:`)],
+                components: [...buildRerollPanelButtons(gw.id, spotKey), new ActionRowBuilder().addComponents(userSelect)],
             });
             return true;
         }
 
-        // 7. Admin searched & selected a user -> validate entry & duplicate slot, then update confirmation embed
+        // 7. Admin searched & selected a user -> validate entry & duplicate slot, announce, and keep main embed updated
         if (action === 'giveaway_pick_user') {
             const spotIndex = parseInt(parts[2] || '0', 10);
+            const spotKey = parts[3] || 'all';
             const selectedUserId = interaction.values[0];
 
             await interaction.deferUpdate();
 
             const result = setPendingWinnerSpot(giveawayId, spotIndex, selectedUserId, interaction.user);
             if (!result.ok) {
+                const gw = getGiveaway(giveawayId);
                 await interaction.editReply({
-                    content: `❌ ${result.reason}\n\nPlease search and select a different participant below:`,
+                    embeds: gw ? [buildRerollPanelEmbed(gw, spotKey, `❌ ${result.reason}`)] : [],
                 });
                 return true;
             }
@@ -341,8 +350,12 @@ async function handleGiveawayInteractions(interaction) {
             await announceRerolledWinners(interaction.client, result.giveaway, result.winners, result.spotIndex);
 
             await interaction.editReply({
-                content: `${getEmoji('gtick')} **Spot #${result.spotIndex + 1}** updated to <@${selectedUserId}> and announced in <#${result.giveaway.channelId}>!`,
-                components: [],
+                embeds: [buildRerollPanelEmbed(
+                    result.giveaway,
+                    spotKey,
+                    `${getEmoji('gtick')} **Spot #${result.spotIndex + 1}** updated to <@${selectedUserId}> and announced in <#${result.giveaway.channelId}>!`
+                )],
+                components: buildRerollPanelButtons(result.giveaway.id, spotKey),
             });
             return true;
         }
