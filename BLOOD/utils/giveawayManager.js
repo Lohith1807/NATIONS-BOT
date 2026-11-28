@@ -352,8 +352,7 @@ function buildWinnerAnnouncementEmbed(gw, winners) {
                 `${getEmoji('no1')} **Winner:** <@${winners[0]}>\n\n` +
                 `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n\n` +
                 `Congratulations! You are the winner of this giveaway!\n\n` +
-                `${getEmoji('book')} To claim your gift, please open a **Help / Assistance Ticket** and our team will assist you with the claiming process.\n\n` +
-                `Please make sure to contact our team to proceed with your reward.\n\n` +
+                `${getEmoji('book')} To claim your gift, click **Claim Giveaway** below to open a ticket and our team will assist you with the claiming process.\n\n` +
                 `Thank you to everyone who participated!\n\n` +
                 `**Giveaway:** \`${gw.id}\``
             )
@@ -370,11 +369,23 @@ function buildWinnerAnnouncementEmbed(gw, winners) {
             `${getEmoji('no1')} **Winners:**\n${winnerLines}\n\n` +
             `${getEmoji('gift')} **Prize:** ${gw.prize}\n\n` +
             `You are officially the winner of this giveaway!\n\n` +
-            `${getEmoji('book')} To claim your gift, please open a **Help / Assistance Ticket**. Our team will verify your win and guide you through the claiming process.\n\n` +
+            `${getEmoji('book')} To claim your gift, click **Claim Giveaway** below to open your ticket. Our team will verify your win and guide you through the claiming process.\n\n` +
             `Thank you to everyone who participated!\n\n` +
             `**Giveaway:** \`${gw.id}\``
         )
         .setTimestamp();
+}
+
+function buildClaimButton(giveawayId) {
+    const btn = new ButtonBuilder()
+        .setCustomId(`giveaway_claim:${giveawayId}`)
+        .setLabel('Claim Giveaway')
+        .setStyle(ButtonStyle.Success);
+
+    const giftEmoji = getEmojiObject('gift');
+    if (giftEmoji) btn.setEmoji(giftEmoji);
+
+    return new ActionRowBuilder().addComponents(btn);
 }
 
 /**
@@ -474,6 +485,7 @@ async function endGiveaway(client, giveawayId) {
             const annMsg = await giveawayChannel.send({
                 content: `${getEmoji('gift')} Congratulations ${mentionContent}!`,
                 embeds: [announcementEmbed],
+                components: [buildClaimButton(gw.id)],
             }).catch(err => {
                 console.error(`❌ [GiveawayManager] Failed to announce winners for ${gw.id}:`, err.message);
                 return null;
@@ -516,6 +528,7 @@ async function announceRerolledWinners(client, gw, winners, spotIndex = null) {
     await channel.send({
         content: `${getEmoji('refresh')} **Giveaway Rerolled!** ${getEmoji('gift')} Congratulations ${mentionContent}!`,
         embeds: [announcementEmbed],
+        components: [buildClaimButton(gw.id)],
     }).catch(err => {
         console.error(`❌ [GiveawayManager] Failed to send reroll announcement for ${gw.id}:`, err.message);
     });
@@ -692,6 +705,23 @@ function setPendingWinnerSpot(giveawayId, spotIndex, targetUserId, adminUser) {
     return { ok: true, giveaway: gw, winners: currentWinners, spotIndex: idx, previousWinnerId };
 }
 
+function recordClaimTicket(giveawayId, userId, channelId) {
+    const giveaways = loadGiveaways();
+    const gw = giveaways.find(g => String(g.id).toUpperCase() === String(giveawayId).toUpperCase());
+    if (!gw) return;
+    if (!gw.claimTickets || typeof gw.claimTickets !== 'object') gw.claimTickets = {};
+    gw.claimTickets[userId] = channelId;
+    saveGiveaways(giveaways);
+}
+
+function removeClaimTicket(giveawayId, userId) {
+    const giveaways = loadGiveaways();
+    const gw = giveaways.find(g => String(g.id).toUpperCase() === String(giveawayId).toUpperCase());
+    if (!gw || !gw.claimTickets) return;
+    delete gw.claimTickets[userId];
+    saveGiveaways(giveaways);
+}
+
 async function checkGiveaways(client) {
     const giveaways = loadGiveaways();
     const now = Date.now();
@@ -719,6 +749,9 @@ module.exports = {
     buildEnterButton,
     buildAdminConfirmEmbed,
     buildAdminConfirmButtons,
+    buildClaimButton,
+    recordClaimTicket,
+    removeClaimTicket,
     endGiveaway,
     confirmGiveawayWinners,
     announceRerolledWinners,
