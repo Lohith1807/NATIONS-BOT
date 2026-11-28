@@ -55,7 +55,7 @@ async function handleGiveawayInteractions(interaction) {
             }
 
             await interaction.editReply({
-                content: `${getEmoji('gtick')} You have entered giveaway \`${result.giveaway.id}\` (**${result.giveaway.prize}**)! Good luck! 🎉`,
+                content: `${getEmoji('gtick')} You have entered giveaway \`${result.giveaway.id}\` (**${result.giveaway.prize}**)! Good luck! ${getEmoji('gift')}`,
             });
             return true;
         }

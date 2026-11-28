@@ -52,15 +52,15 @@ module.exports = {
 
         // Strictly never display winners, winnerCount, or admin override info
         const embed = new EmbedBuilder()
-            .setTitle(`🎉 Giveaway Info: ${gw.id}`)
+            .setTitle(`Giveaway Info: ${gw.id}`)
             .setColor(isEnded ? '#95A5A6' : '#F1C40F')
             .addFields(
-                { name: '🎁 Prize', value: gw.prize, inline: true },
-                { name: '📌 Status', value: isEnded ? 'Ended' : 'Active', inline: true },
-                { name: '👥 Total Entries', value: `${(gw.participants || []).length}`, inline: true },
-                { name: isEnded ? '⏰ Ended' : '⏰ Ends', value: `<t:${ts}:R> (<t:${ts}:f>)`, inline: true },
-                { name: '📍 Channel', value: `<#${gw.channelId}>`, inline: true },
-                { name: '👑 Hosted By', value: `<@${gw.createdBy}>`, inline: true }
+                { name: 'Prize', value: `${getEmoji('gift')} ${gw.prize}`, inline: true },
+                { name: 'Status', value: `${getEmoji(isEnded ? 'bluex' : 'gtick')} ${isEnded ? 'Ended' : 'Active'}`, inline: true },
+                { name: 'Total Entries', value: `${getEmoji('mem')} ${(gw.participants || []).length}`, inline: true },
+                { name: isEnded ? 'Ended' : 'Ends', value: `${getEmoji('alaram')} <t:${ts}:R> (<t:${ts}:f>)`, inline: true },
+                { name: 'Channel', value: `${getEmoji('arrow')} <#${gw.channelId}>`, inline: true },
+                { name: 'Hosted By', value: `${getEmoji('crown')} <@${gw.createdBy}>`, inline: true }
             )
             .setTimestamp();
 
@@ -71,3 +71,4 @@ module.exports = {
         await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     },
 };
+

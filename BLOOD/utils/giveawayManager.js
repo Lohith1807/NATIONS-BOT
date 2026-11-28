@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { getEmoji } = require('./botemoji.js');
+const { getEmoji, getEmojiObject } = require('./botemoji.js');
 
 const DATA_PATH = path.join(__dirname, '../data/giveaways.json');
 const ADMIN_CHANNEL_ID = process.env.GIVEAWAY_ADMIN_CHANNEL_ID || '1393858242337050664';
@@ -226,10 +226,11 @@ function buildGiveawayEmbed(gw) {
     const ts = Math.floor((isEnded && gw.endedAt ? gw.endedAt : gw.endsAt) / 1000);
 
     return new EmbedBuilder()
-        .setTitle(`🎉 ${gw.prize}`)
+        .setTitle(gw.prize)
         .setColor(isEnded ? '#95A5A6' : '#F1C40F')
         .setDescription(
-            (gw.description ? `${gw.description}\n\n` : '') +
+            `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n` +
+            (gw.description ? `${getEmoji('yarrow')} ${gw.description}\n\n` : '\n') +
             `${getEmoji('arrow')} **${timeLabel}:** <t:${ts}:R> (<t:${ts}:f>)\n` +
             `${getEmoji('mem')} **Entries:** ${(gw.participants || []).length}\n` +
             `${getEmoji('crown')} **Hosted by:** <@${gw.createdBy}>`
@@ -242,9 +243,11 @@ function buildEnterButton(gw, disabled = false) {
     const btn = new ButtonBuilder()
         .setCustomId(`giveaway_enter:${gw.id}`)
         .setLabel(disabled ? 'Giveaway Ended' : `Enter Giveaway (${(gw.participants || []).length})`)
-        .setEmoji('🎉')
         .setStyle(disabled ? ButtonStyle.Secondary : ButtonStyle.Primary)
         .setDisabled(disabled);
+
+    const giftEmoji = getEmojiObject('gift');
+    if (giftEmoji) btn.setEmoji(giftEmoji);
 
     return new ActionRowBuilder().addComponents(btn);
 }
@@ -254,21 +257,22 @@ function buildEnterButton(gw, disabled = false) {
  */
 function buildAdminConfirmEmbed(gw, winners, confirmedById = null) {
     const winnerList = winners.length > 0
-        ? winners.map(id => `- <@${id}> (\`${id}\`)`).join('\n')
+        ? winners.map(id => `${getEmoji('pinkdot')} <@${id}> (\`${id}\`)`).join('\n')
         : '*No eligible participants*';
 
     const statusLine = confirmedById
-        ? `✅ **Status:** Confirmed & Announced by <@${confirmedById}>`
-        : `⏳ **Status:** Awaiting Admin Confirmation\n\nClick **Confirm Winner & Send Notification** to ping the winner(s) in <#${gw.channelId}>, or click **Change Winner** to randomly pick someone else.`;
+        ? `${getEmoji('gtick')} **Status:** Confirmed & Announced by <@${confirmedById}>`
+        : `${getEmoji('alaram')} **Status:** Awaiting Admin Confirmation\n\nClick **Confirm Winner & Send Notification** to ping the winner(s) in <#${gw.channelId}>, or click **Change Winner** to randomly pick someone else.`;
 
     return new EmbedBuilder()
-        .setTitle(`🛡️ Giveaway Winner Confirmation — ${gw.id}`)
+        .setTitle(`Giveaway Winner Confirmation — ${gw.id}`)
         .setColor(confirmedById ? '#2ECC71' : '#F39C12')
         .setDescription(
-            `🎁 **Giveaway:** ${gw.prize}\n` +
-            `📍 **Giveaway Channel:** <#${gw.channelId}>\n` +
-            `👥 **Total Entries:** ${(gw.participants || []).length}\n\n` +
-            `🏆 **Selected Winner(s):**\n${winnerList}\n\n` +
+            `${getEmoji('sheild')} **Admin Confirmation Required**\n\n` +
+            `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n` +
+            `${getEmoji('arrow')} **Giveaway Channel:** <#${gw.channelId}>\n` +
+            `${getEmoji('mem')} **Total Entries:** ${(gw.participants || []).length}\n\n` +
+            `${getEmoji('no1')} **Selected Winner(s):**\n${winnerList}\n\n` +
             statusLine
         )
         .setFooter({ text: `Giveaway ID: ${gw.id}` })
@@ -279,16 +283,20 @@ function buildAdminConfirmButtons(giveawayId, disabled = false) {
     const confirmBtn = new ButtonBuilder()
         .setCustomId(`giveaway_confirm:${giveawayId}`)
         .setLabel('Confirm Winner & Send Notification')
-        .setEmoji('✅')
         .setStyle(ButtonStyle.Success)
         .setDisabled(disabled);
+
+    const tickEmoji = getEmojiObject('gtick');
+    if (tickEmoji) confirmBtn.setEmoji(tickEmoji);
 
     const changeBtn = new ButtonBuilder()
         .setCustomId(`giveaway_reroll:${giveawayId}`)
         .setLabel('Change Winner')
-        .setEmoji('🔄')
         .setStyle(ButtonStyle.Primary)
         .setDisabled(disabled);
+
+    const refreshEmoji = getEmojiObject('refresh');
+    if (refreshEmoji) changeBtn.setEmoji(refreshEmoji);
 
     return new ActionRowBuilder().addComponents(confirmBtn, changeBtn);
 }
@@ -298,14 +306,15 @@ function buildWinnerAnnouncementEmbed(gw, winners) {
 
     if (isSingle) {
         return new EmbedBuilder()
-            .setTitle('🎉 GIVEAWAY WINNER ANNOUNCEMENT!')
+            .setTitle('GIVEAWAY WINNER ANNOUNCEMENT!')
             .setColor('#2ECC71')
             .setDescription(
+                `${getEmoji('gift')} **GIVEAWAY WINNER ANNOUNCEMENT!**\n\n` +
                 `Congratulations to our winner!\n\n` +
-                `🏆 **Winner:** <@${winners[0]}>\n\n` +
-                `🎁 **Giveaway:** ${gw.prize}\n\n` +
+                `${getEmoji('no1')} **Winner:** <@${winners[0]}>\n\n` +
+                `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n\n` +
                 `Congratulations! You are the winner of this giveaway!\n\n` +
-                `To claim your gift, please open a **Help / Assistance Ticket** and our team will assist you with the claiming process.\n\n` +
+                `${getEmoji('arrow')} To claim your gift, please open a **Help / Assistance Ticket** and our team will assist you with the claiming process.\n\n` +
                 `Please make sure to contact our team to proceed with your reward.\n\n` +
                 `Thank you to everyone who participated!\n\n` +
                 `**Giveaway:** \`${gw.id}\``
@@ -315,14 +324,15 @@ function buildWinnerAnnouncementEmbed(gw, winners) {
 
     const winnerLines = winners.map(id => `- <@${id}>`).join('\n');
     return new EmbedBuilder()
-        .setTitle('🎉 GIVEAWAY WINNERS ANNOUNCED!')
+        .setTitle('GIVEAWAY WINNERS ANNOUNCED!')
         .setColor('#2ECC71')
         .setDescription(
+            `${getEmoji('gift')} **GIVEAWAY WINNERS ANNOUNCED!**\n\n` +
             `Congratulations to our winners!\n\n` +
-            `🏆 **Winners:**\n${winnerLines}\n\n` +
-            `🎁 **Prize:** ${gw.prize}\n\n` +
+            `${getEmoji('no1')} **Winners:**\n${winnerLines}\n\n` +
+            `${getEmoji('gift')} **Prize:** ${gw.prize}\n\n` +
             `You are officially the winner of this giveaway!\n\n` +
-            `To claim your gift, please open a **Help / Assistance Ticket**. Our team will verify your win and guide you through the claiming process.\n\n` +
+            `${getEmoji('arrow')} To claim your gift, please open a **Help / Assistance Ticket**. Our team will verify your win and guide you through the claiming process.\n\n` +
             `Thank you to everyone who participated!\n\n` +
             `**Giveaway:** \`${gw.id}\``
         )
@@ -380,11 +390,11 @@ async function endGiveaway(client, giveawayId) {
 
             if (giveawayChannel) {
                 const noWinnerEmbed = new EmbedBuilder()
-                    .setTitle('🎉 GIVEAWAY ENDED')
+                    .setTitle('GIVEAWAY ENDED')
                     .setColor('#E74C3C')
                     .setDescription(
-                        `**Giveaway:** ${gw.prize} (\`${gw.id}\`)\n\n` +
-                        `This giveaway has ended, but there were no eligible participants.`
+                        `${getEmoji('gift')} **Giveaway:** ${gw.prize} (\`${gw.id}\`)\n\n` +
+                        `${getEmoji('alaram')} This giveaway has ended, but there were no eligible participants.`
                     )
                     .setTimestamp();
                 await giveawayChannel.send({ embeds: [noWinnerEmbed] }).catch(() => {});
@@ -396,7 +406,7 @@ async function endGiveaway(client, giveawayId) {
 
             if (adminChannel) {
                 await adminChannel.send({
-                    content: `⚠️ Giveaway **${gw.prize}** (\`${gw.id}\`) ended with **0 eligible participants**.`,
+                    content: `${getEmoji('alaram')} Giveaway **${gw.prize}** (\`${gw.id}\`) ended with **0 eligible participants**.`,
                 }).catch(() => {});
             }
 
@@ -490,7 +500,7 @@ async function confirmGiveawayWinners(client, giveawayId, adminUser) {
         const mentionContent = winners.map(id => `<@${id}>`).join(' ');
         const announcementEmbed = buildWinnerAnnouncementEmbed(gw, winners);
         await channel.send({
-            content: `🎉 Congratulations ${mentionContent}!`,
+            content: `${getEmoji('gift')} Congratulations ${mentionContent}!`,
             embeds: [announcementEmbed],
         });
 
