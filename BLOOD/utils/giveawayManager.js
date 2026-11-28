@@ -126,6 +126,9 @@ function addParticipant(giveawayId, userId) {
     if (gw.status !== 'active' || Date.now() >= gw.endsAt) {
         return { ok: false, reason: 'This giveaway has already ended.' };
     }
+    if (gw.createdBy === userId) {
+        return { ok: false, reason: 'The giveaway host cannot enter or win their own giveaway.' };
+    }
     if (!Array.isArray(gw.participants)) gw.participants = [];
     if (gw.participants.includes(userId)) {
         return { ok: false, reason: 'already_entered', count: gw.participants.length };
@@ -207,7 +210,7 @@ function pickRandomWinners(pool, count) {
 }
 
 async function getEligibleParticipants(client, gw) {
-    const rawParticipants = Array.from(new Set(gw.participants || []));
+    const rawParticipants = Array.from(new Set(gw.participants || [])).filter(uid => uid !== gw.createdBy);
     const guild = client.guilds.cache.get(gw.guildId) || await client.guilds.fetch(gw.guildId).catch(() => null);
     if (!guild || rawParticipants.length === 0) return rawParticipants;
 
@@ -629,6 +632,14 @@ async function rerollPendingWinners(client, giveawayId, adminUser, spotIndex = n
     if (!gw) return { ok: false, reason: 'Giveaway not found.' };
     if (gw.status !== 'ended') return { ok: false, reason: 'This giveaway has not ended yet.' };
 
+    if (targetUserId === gw.createdBy) {
+        return {
+            ok: false,
+            code: 'HOST_CANNOT_WIN',
+            reason: `<@${targetUserId}> is the giveaway **host** and cannot be selected as a winner!`,
+        };
+    }
+
     const eligibleParticipants = await getEligibleParticipants(client, gw);
     if (eligibleParticipants.length === 0) {
         return { ok: false, reason: 'No eligible participants left in the server.' };
@@ -692,6 +703,14 @@ function setPendingWinnerSpot(giveawayId, spotIndex, targetUserId, adminUser) {
     const gw = giveaways.find(g => String(g.id).toUpperCase() === String(giveawayId).toUpperCase());
     if (!gw) return { ok: false, reason: 'Giveaway not found.' };
     if (gw.status !== 'ended') return { ok: false, reason: 'This giveaway has not ended yet.' };
+
+    if (targetUserId === gw.createdBy) {
+        return {
+            ok: false,
+            code: 'HOST_CANNOT_WIN',
+            reason: `<@${targetUserId}> is the giveaway **host** and cannot be selected as a winner!`,
+        };
+    }
 
     if (!Array.isArray(gw.participants) || !gw.participants.includes(targetUserId)) {
         return {
