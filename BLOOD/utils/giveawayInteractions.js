@@ -290,7 +290,6 @@ async function handleGiveawayInteractions(interaction) {
             const deleteBtn = new ButtonBuilder()
                 .setCustomId(`giveaway_ticket_delete:${gw.id}:${interaction.user.id}`)
                 .setLabel('Delete Ticket')
-                .setEmoji('🗑️')
                 .setStyle(ButtonStyle.Danger);
 
             await ticketChannel.send({
@@ -312,8 +311,9 @@ async function handleGiveawayInteractions(interaction) {
         // 3. Ticket: "Submit Proof" button -> open modal with FileUploadBuilder (image) + optional note
         if (action === 'giveaway_ticket_proof') {
             const winnerId = parts[2];
+            const welcomeMsgId = interaction.message?.id || '';
             const modal = new ModalBuilder()
-                .setCustomId(`giveaway_proof_modal:${giveawayId}:${winnerId}`)
+                .setCustomId(`giveaway_proof_modal:${giveawayId}:${winnerId}:${welcomeMsgId}`)
                 .setTitle(`Submit Proof — ${giveawayId}`);
 
             const imageLabel = new LabelBuilder()
@@ -342,23 +342,51 @@ async function handleGiveawayInteractions(interaction) {
             return true;
         }
 
-        // 4. Ticket: Proof modal submitted -> post proof image + embed in ticket channel
+        // 4. Ticket: Proof modal submitted -> validate image, post proof, and disable Submit Proof button once
         if (action === 'giveaway_proof_modal') {
+            const welcomeMsgId = parts[3];
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+            // Prevent duplicate submission if button is already disabled
+            let welcomeMsg = null;
+            if (welcomeMsgId && interaction.channel) {
+                welcomeMsg = await interaction.channel.messages.fetch(welcomeMsgId).catch(() => null);
+                const existingProofBtn = welcomeMsg?.components?.[0]?.components?.find(
+                    c => c.customId?.startsWith('giveaway_ticket_proof:')
+                );
+                if (existingProofBtn?.disabled) {
+                    await interaction.editReply({
+                        content: `${getEmoji('alaram')} Proof has already been submitted for this ticket.`,
+                    });
+                    return true;
+                }
+            }
 
             const uploadedFiles = interaction.fields.getUploadedFiles('proof_image');
             const proofFile = uploadedFiles?.first();
+            const isValidImage = Boolean(
+                proofFile && (
+                    proofFile.contentType?.startsWith('image/') ||
+                    /\.(png|jpe?g|webp|gif)$/i.test(proofFile.name || '') ||
+                    (proofFile.width && proofFile.height)
+                )
+            );
+
+            // Only disable on a perfect valid image submission
+            if (!isValidImage) {
+                await interaction.editReply({
+                    content: `❌ Please upload a valid **image** file (PNG, JPG, WEBP, or GIF). You can click **Submit Proof** again.`,
+                });
+                return true;
+            }
+
             let note = '';
             try {
                 note = interaction.fields.getTextInputValue('proof_note')?.trim() || '';
             } catch (_) {}
 
-            const files = [];
-            let attachmentName = null;
-            if (proofFile) {
-                attachmentName = proofFile.name || 'proof.png';
-                files.push(new AttachmentBuilder(proofFile.url, { name: attachmentName }));
-            }
+            const attachmentName = proofFile.name || 'proof.png';
+            const files = [new AttachmentBuilder(proofFile.url, { name: attachmentName })];
 
             const proofEmbed = new EmbedBuilder()
                 .setTitle(`Proof Submitted — ${giveawayId}`)
@@ -367,16 +395,29 @@ async function handleGiveawayInteractions(interaction) {
                     `${getEmoji('gtick')} **Submitted by:** <@${interaction.user.id}>\n` +
                     (note ? `\n${getEmoji('book')} **Details:**\n${note}` : '')
                 )
+                .setImage(`attachment://${attachmentName}`)
                 .setTimestamp();
-
-            if (attachmentName) {
-                proofEmbed.setImage(`attachment://${attachmentName}`);
-            }
 
             await interaction.channel.send({
                 embeds: [proofEmbed],
                 files,
             });
+
+            // Disable only the Submit Proof button on the welcome message after successful submission
+            if (welcomeMsg && welcomeMsg.components?.length > 0) {
+                const updatedRows = welcomeMsg.components.map(row =>
+                    new ActionRowBuilder().addComponents(
+                        row.components.map(btn => {
+                            const built = ButtonBuilder.from(btn);
+                            if (btn.customId?.startsWith('giveaway_ticket_proof:')) {
+                                built.setLabel('Proof Submitted').setDisabled(true);
+                            }
+                            return built;
+                        })
+                    )
+                );
+                await welcomeMsg.edit({ components: updatedRows }).catch(() => {});
+            }
 
             await interaction.editReply({
                 content: `${getEmoji('gtick')} Your proof has been submitted in this ticket!`,
