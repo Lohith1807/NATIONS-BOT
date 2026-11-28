@@ -464,7 +464,23 @@ async function endGiveaway(client, giveawayId) {
         gw.pendingWinners = selectedWinners;
         saveGiveaways(giveaways);
 
-        // 6. Send confirmation embed to Admin Channel (1393858242337050664)
+        // 6. Send Giveaway Ended notice to the channel where it was posted
+        if (giveawayChannel) {
+            const endedNoticeEmbed = new EmbedBuilder()
+                .setTitle(`Giveaway Ended — ${gw.prize}`)
+                .setColor('#95A5A6')
+                .setDescription(
+                    `${getEmoji('alaram')} **This giveaway has ended!**\n\n` +
+                    `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n` +
+                    `${getEmoji('gob')} **Total Entries:** ${eligibleParticipants.length}\n` +
+                    `${getEmoji('book')} **Giveaway ID:** \`${gw.id}\`\n\n` +
+                    `Winners are being verified and will be announced shortly.`
+                )
+                .setTimestamp();
+            await giveawayChannel.send({ embeds: [endedNoticeEmbed] }).catch(() => {});
+        }
+
+        // 7. Send confirmation embed to Admin Channel (1393858242337050664)
         const adminChannel = guild
             ? (guild.channels.cache.get(ADMIN_CHANNEL_ID) || await guild.channels.fetch(ADMIN_CHANNEL_ID).catch(() => null))
             : await client.channels.fetch(ADMIN_CHANNEL_ID).catch(() => null);
