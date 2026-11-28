@@ -1,4 +1,4 @@
-const { MessageFlags, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, UserSelectMenuBuilder } = require('discord.js');
+const { MessageFlags, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, UserSelectMenuBuilder } = require('discord.js');
 const { getEmoji } = require('./botemoji.js');
 const {
     ADMIN_CHANNEL_ID,
@@ -30,6 +30,42 @@ async function refreshAdminConfirmMessage(interaction, gw) {
     }
 }
 
+function buildRerollPanelEmbed(gw, spotKey, statusNote = null) {
+    const pending = gw.pendingWinners || [];
+    const winnerLines = pending.length > 0
+        ? pending.map((id, i) => `**${i + 1}.** ${getEmoji('pinkdot')} <@${id}> (\`${id}\`)`).join('\n')
+        : '*No pending winners*';
+    const scopeText = spotKey === 'all' ? 'All Spots' : `Spot #${parseInt(spotKey, 10) + 1}`;
+
+    return new EmbedBuilder()
+        .setTitle(`Giveaway Reroll — ${gw.id}`)
+        .setColor('#F39C12')
+        .setDescription(
+            (statusNote ? `${statusNote}\n\n` : '') +
+            `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n` +
+            `${getEmoji('book')} **Target:** ${scopeText}\n` +
+            `${getEmoji('gob')} **Total Entries:** ${(gw.participants || []).length}\n\n` +
+            `${getEmoji('no1')} **Current Winner List:**\n${winnerLines}\n\n` +
+            `Choose **Auto** to randomly reroll, or **Manual** to search & pick a specific participant.`
+        )
+        .setFooter({ text: `Giveaway ID: ${gw.id}` })
+        .setTimestamp();
+}
+
+function buildRerollPanelButtons(giveawayId, spotKey) {
+    const autoBtn = new ButtonBuilder()
+        .setCustomId(`giveaway_cmd_auto:${giveawayId}:${spotKey}`)
+        .setLabel('Auto')
+        .setStyle(ButtonStyle.Primary);
+
+    const manualBtn = new ButtonBuilder()
+        .setCustomId(`giveaway_cmd_manual:${giveawayId}:${spotKey}`)
+        .setLabel('Manual')
+        .setStyle(ButtonStyle.Secondary);
+
+    return [new ActionRowBuilder().addComponents(autoBtn, manualBtn)];
+}
+
 /**
  * Handles persistent giveaway button & select-menu interactions:
  * - giveaway_enter:<id>
@@ -39,6 +75,8 @@ async function refreshAdminConfirmMessage(interaction, gw) {
  * - giveaway_change_btn:<id>
  * - giveaway_pick_spot:<id>
  * - giveaway_pick_user:<id>:<spotIndex>
+ * - giveaway_cmd_auto:<id>:<spotKey>
+ * - giveaway_cmd_manual:<id>:<spotKey>
  */
 async function handleGiveawayInteractions(interaction) {
     const isBtn = interaction.isButton();
@@ -54,7 +92,9 @@ async function handleGiveawayInteractions(interaction) {
         !customId.startsWith('giveaway_reroll_select:') &&
         !customId.startsWith('giveaway_change_btn:') &&
         !customId.startsWith('giveaway_pick_spot:') &&
-        !customId.startsWith('giveaway_pick_user:')
+        !customId.startsWith('giveaway_pick_user:') &&
+        !customId.startsWith('giveaway_cmd_auto:') &&
+        !customId.startsWith('giveaway_cmd_manual:')
     ) {
         return false;
     }
@@ -76,7 +116,7 @@ async function handleGiveawayInteractions(interaction) {
                     });
                     return true;
                 }
-                await interaction.editReply({ content: `${getEmoji('bluex')} ${result.reason}` });
+                await interaction.editReply({ content: `❌ ${result.reason}` });
                 return true;
             }
 
@@ -96,7 +136,7 @@ async function handleGiveawayInteractions(interaction) {
         // Admin-only actions below
         if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
             await interaction.reply({
-                content: `${getEmoji('bluex')} Only **Server Administrators** can confirm or change giveaway winners.`,
+                content: `❌ Only **Server Administrators** can confirm or change giveaway winners.`,
                 flags: MessageFlags.Ephemeral,
             });
             return true;
@@ -109,7 +149,7 @@ async function handleGiveawayInteractions(interaction) {
             const result = await confirmGiveawayWinners(interaction.client, giveawayId, interaction.user);
             if (!result.ok) {
                 await interaction.followUp({
-                    content: `${getEmoji('bluex')} ${result.reason}`,
+                    content: `❌ ${result.reason}`,
                     flags: MessageFlags.Ephemeral,
                 });
                 return true;
@@ -127,7 +167,7 @@ async function handleGiveawayInteractions(interaction) {
             return true;
         }
 
-        // 3. Admin rerolls all winners OR a specific spot index randomly
+        // 3. Admin rerolls all winners OR a specific spot index randomly from Admin Confirmation embed
         if (action === 'giveaway_reroll' || action === 'giveaway_reroll_select') {
             await interaction.deferUpdate();
 
@@ -141,7 +181,7 @@ async function handleGiveawayInteractions(interaction) {
             const result = await rerollPendingWinners(interaction.client, giveawayId, interaction.user, spotIndex);
             if (!result.ok) {
                 await interaction.followUp({
-                    content: `${getEmoji('bluex')} ${result.reason}`,
+                    content: `❌ ${result.reason}`,
                     flags: MessageFlags.Ephemeral,
                 });
                 return true;
@@ -163,32 +203,72 @@ async function handleGiveawayInteractions(interaction) {
             return true;
         }
 
-        // 4. Admin clicks "Change Winner (Pick User)" -> show searchable UserSelectMenu (or Spot picker first if >1 winner)
-        if (action === 'giveaway_change_btn') {
-            const gw = getGiveaway(giveawayId);
-            if (!gw) {
-                return interaction.reply({ content: `${getEmoji('bluex')} Giveaway not found.`, flags: MessageFlags.Ephemeral });
-            }
-            if (gw.announced) {
-                return interaction.reply({ content: `${getEmoji('bluex')} Winners have already been confirmed and announced.`, flags: MessageFlags.Ephemeral });
-            }
+        // 4. /giveaway-reroll -> "Auto" button clicked in private ephemeral panel
+        if (action === 'giveaway_cmd_auto') {
+            const spotKey = parts[2] || 'all';
+            const spotIndex = spotKey === 'all' ? null : parseInt(spotKey, 10);
 
-            const pending = gw.pendingWinners || [];
-            if (pending.length <= 1) {
-                const userSelect = new UserSelectMenuBuilder()
-                    .setCustomId(`giveaway_pick_user:${gw.id}:0`)
-                    .setPlaceholder('Search and select a new winner...')
-                    .setMinValues(1)
-                    .setMaxValues(1);
+            await interaction.deferUpdate();
 
-                await interaction.reply({
-                    content: `${getEmoji('mem')} Search and select the user you want to set as the winner for \`${gw.id}\`:`,
-                    components: [new ActionRowBuilder().addComponents(userSelect)],
+            const result = await rerollPendingWinners(interaction.client, giveawayId, interaction.user, spotIndex);
+            if (!result.ok) {
+                await interaction.followUp({
+                    content: `❌ ${result.reason}`,
                     flags: MessageFlags.Ephemeral,
                 });
                 return true;
             }
 
+            await refreshAdminConfirmMessage(interaction, result.giveaway);
+
+            const statusNote = spotIndex !== null
+                ? `${getEmoji('gtick')} **Auto-rerolled Spot #${spotIndex + 1}** to <@${result.winners[spotIndex]}>!`
+                : `${getEmoji('gtick')} **Auto-rerolled all winner spots!**`;
+
+            await interaction.editReply({
+                embeds: [buildRerollPanelEmbed(result.giveaway, spotKey, statusNote)],
+                components: buildRerollPanelButtons(result.giveaway.id, spotKey),
+            });
+            return true;
+        }
+
+        // 5. "Change Winner (Pick User)" OR /giveaway-reroll -> "Manual" button
+        if (action === 'giveaway_change_btn' || action === 'giveaway_cmd_manual') {
+            const gw = getGiveaway(giveawayId);
+            if (!gw) {
+                return interaction.reply({ content: `❌ Giveaway not found.`, flags: MessageFlags.Ephemeral });
+            }
+            if (gw.announced) {
+                return interaction.reply({ content: `❌ Winners have already been confirmed and announced.`, flags: MessageFlags.Ephemeral });
+            }
+
+            const spotKey = parts[2];
+            const pending = gw.pendingWinners || [];
+
+            // If a specific spot was passed (e.g. /giveaway-reroll spot:1 -> Manual), or only 1 winner exists
+            if ((spotKey && spotKey !== 'all') || pending.length <= 1) {
+                const targetIdx = spotKey && spotKey !== 'all' ? parseInt(spotKey, 10) : 0;
+                const userSelect = new UserSelectMenuBuilder()
+                    .setCustomId(`giveaway_pick_user:${gw.id}:${targetIdx}`)
+                    .setPlaceholder(`Search and select user for Spot #${targetIdx + 1}...`)
+                    .setMinValues(1)
+                    .setMaxValues(1);
+
+                const payload = {
+                    content: `${getEmoji('gob')} Search and select the user for **Spot #${targetIdx + 1}** of \`${gw.id}\`:`,
+                    embeds: [],
+                    components: [new ActionRowBuilder().addComponents(userSelect)],
+                };
+
+                if (action === 'giveaway_cmd_manual') {
+                    await interaction.update(payload);
+                } else {
+                    await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+                }
+                return true;
+            }
+
+            // Multiple winner spots and no specific spot pre-selected -> ask which spot first
             const spotSelect = new StringSelectMenuBuilder()
                 .setCustomId(`giveaway_pick_spot:${gw.id}`)
                 .setPlaceholder('First select which winner spot to change...')
@@ -200,21 +280,27 @@ async function handleGiveawayInteractions(interaction) {
                     }))
                 );
 
-            await interaction.reply({
-                content: `${getEmoji('mem')} Select which winner **spot** you want to change for \`${gw.id}\`:`,
+            const payload = {
+                content: `${getEmoji('gob')} Select which winner **spot** you want to change for \`${gw.id}\`:`,
+                embeds: [],
                 components: [new ActionRowBuilder().addComponents(spotSelect)],
-                flags: MessageFlags.Ephemeral,
-            });
+            };
+
+            if (action === 'giveaway_cmd_manual') {
+                await interaction.update(payload);
+            } else {
+                await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+            }
             return true;
         }
 
-        // 5. Admin picked a spot -> show searchable UserSelectMenu for that spot
+        // 6. Admin picked a spot -> show searchable UserSelectMenu for that spot
         if (action === 'giveaway_pick_spot') {
             const spotIndex = parseInt(interaction.values[0], 10);
             const gw = getGiveaway(giveawayId);
             if (!gw || gw.announced) {
                 return interaction.update({
-                    content: `${getEmoji('bluex')} Giveaway is no longer awaiting confirmation.`,
+                    content: `❌ Giveaway is no longer awaiting confirmation.`,
                     components: [],
                 });
             }
@@ -226,13 +312,13 @@ async function handleGiveawayInteractions(interaction) {
                 .setMaxValues(1);
 
             await interaction.update({
-                content: `${getEmoji('mem')} Search and select the user for **Spot #${spotIndex + 1}** of \`${gw.id}\`:`,
+                content: `${getEmoji('gob')} Search and select the user for **Spot #${spotIndex + 1}** of \`${gw.id}\`:`,
                 components: [new ActionRowBuilder().addComponents(userSelect)],
             });
             return true;
         }
 
-        // 6. Admin searched & selected a user -> validate entry & duplicate slot, then update confirmation embed
+        // 7. Admin searched & selected a user -> validate entry & duplicate slot, then update confirmation embed
         if (action === 'giveaway_pick_user') {
             const spotIndex = parseInt(parts[2] || '0', 10);
             const selectedUserId = interaction.values[0];
@@ -242,7 +328,7 @@ async function handleGiveawayInteractions(interaction) {
             const result = setPendingWinnerSpot(giveawayId, spotIndex, selectedUserId, interaction.user);
             if (!result.ok) {
                 await interaction.editReply({
-                    content: `${getEmoji('bluex')} ${result.reason}\n\nPlease search and select a different participant below:`,
+                    content: `❌ ${result.reason}\n\nPlease search and select a different participant below:`,
                 });
                 return true;
             }

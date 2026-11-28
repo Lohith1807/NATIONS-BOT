@@ -57,7 +57,7 @@ module.exports = {
     async execute(interaction) {
         if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({
-                content: `${getEmoji('bluex')} Only **Server Administrators** can create giveaways.`,
+                content: `❌ Only **Server Administrators** can create giveaways.`,
                 flags: MessageFlags.Ephemeral,
             });
         }
@@ -76,7 +76,7 @@ module.exports = {
         const durationMs = parseDuration(durationStr);
         if (!durationMs) {
             return interaction.reply({
-                content: `${getEmoji('bluex')} Invalid duration format. Examples: \`30s\`, \`10m\`, \`2h\`, \`1d\`, \`1w\`.`,
+                content: `❌ Invalid duration format. Examples: \`30s\`, \`10m\`, \`2h\`, \`1d\`, \`1w\`.`,
                 flags: MessageFlags.Ephemeral,
             });
         }
@@ -106,16 +106,16 @@ module.exports = {
             await interaction.editReply({
                 content:
                     `${getEmoji('gtick')} **Giveaway Created!**\n` +
-                    `${getEmoji('arrow')} **Giveaway ID:** \`${gw.id}\`\n` +
-                    `${getEmoji('arrow')} **Prize:** ${gw.prize}\n` +
-                    `${getEmoji('arrow')} **Channel:** <#${targetChannel.id}>\n` +
-                    `${getEmoji('arrow')} **Internal Winner Count:** ${gw.winnerCount} *(kept private)*\n` +
-                    `${getEmoji('arrow')} **Ends:** <t:${Math.floor(endsAt / 1000)}:R>`,
+                    `${getEmoji('book')} **Giveaway ID:** \`${gw.id}\`\n` +
+                    `${getEmoji('book')} **Prize:** ${gw.prize}\n` +
+                    `${getEmoji('book')} **Channel:** <#${targetChannel.id}>\n` +
+                    `${getEmoji('book')} **Internal Winner Count:** ${gw.winnerCount} *(kept private)*\n` +
+                    `${getEmoji('book')} **Ends:** <t:${Math.floor(endsAt / 1000)}:R>`,
             });
         } catch (err) {
             console.error('❌ [giveaway-create] Failed to send giveaway message:', err);
             await interaction.editReply({
-                content: `${getEmoji('bluex')} Failed to post giveaway in <#${targetChannel.id}>: ${err.message}`,
+                content: `❌ Failed to post giveaway in <#${targetChannel.id}>: ${err.message}`,
             });
         }
     },

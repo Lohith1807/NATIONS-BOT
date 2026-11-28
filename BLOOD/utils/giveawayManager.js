@@ -231,8 +231,8 @@ function buildGiveawayEmbed(gw) {
         .setDescription(
             `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n` +
             (gw.description ? `${gw.description}\n\n` : '\n') +
-            `${getEmoji('arrow')} **${timeLabel}:** <t:${ts}:R> (<t:${ts}:f>)\n` +
-            `${getEmoji('mem')} **Entries:** ${(gw.participants || []).length}\n` +
+            `${getEmoji('book')} **${timeLabel}:** <t:${ts}:R> (<t:${ts}:f>)\n` +
+            `${getEmoji('gob')} **Entries:** ${(gw.participants || []).length}\n` +
             `${getEmoji('crown')} **Hosted by:** <@${gw.createdBy}>`
         )
         .setFooter({ text: `Giveaway ID: ${gw.id}` })
@@ -270,8 +270,8 @@ function buildAdminConfirmEmbed(gw, winners, confirmedById = null) {
         .setDescription(
             `${getEmoji('sheild')} **Admin Confirmation Required**\n\n` +
             `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n` +
-            `${getEmoji('arrow')} **Giveaway Channel:** <#${gw.channelId}>\n` +
-            `${getEmoji('mem')} **Total Entries:** ${(gw.participants || []).length}\n\n` +
+            `${getEmoji('book')} **Giveaway Channel:** <#${gw.channelId}>\n` +
+            `${getEmoji('gob')} **Total Entries:** ${(gw.participants || []).length}\n\n` +
             `${getEmoji('no1')} **Selected Winner(s):**\n${winnerList}\n\n` +
             statusLine
         )
@@ -303,9 +303,6 @@ function buildAdminConfirmButtons(giveawayId, disabled = false, winnerCount = 1)
         .setLabel('Change Winner (Pick User)')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(disabled);
-
-    const memEmoji = getEmojiObject('mem');
-    if (memEmoji) changeUserBtn.setEmoji(memEmoji);
 
     const rows = [new ActionRowBuilder().addComponents(confirmBtn, rerollAllBtn, changeUserBtn)];
 
@@ -355,7 +352,7 @@ function buildWinnerAnnouncementEmbed(gw, winners) {
                 `${getEmoji('no1')} **Winner:** <@${winners[0]}>\n\n` +
                 `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n\n` +
                 `Congratulations! You are the winner of this giveaway!\n\n` +
-                `${getEmoji('arrow')} To claim your gift, please open a **Help / Assistance Ticket** and our team will assist you with the claiming process.\n\n` +
+                `${getEmoji('book')} To claim your gift, please open a **Help / Assistance Ticket** and our team will assist you with the claiming process.\n\n` +
                 `Please make sure to contact our team to proceed with your reward.\n\n` +
                 `Thank you to everyone who participated!\n\n` +
                 `**Giveaway:** \`${gw.id}\``
@@ -373,7 +370,7 @@ function buildWinnerAnnouncementEmbed(gw, winners) {
             `${getEmoji('no1')} **Winners:**\n${winnerLines}\n\n` +
             `${getEmoji('gift')} **Prize:** ${gw.prize}\n\n` +
             `You are officially the winner of this giveaway!\n\n` +
-            `${getEmoji('arrow')} To claim your gift, please open a **Help / Assistance Ticket**. Our team will verify your win and guide you through the claiming process.\n\n` +
+            `${getEmoji('book')} To claim your gift, please open a **Help / Assistance Ticket**. Our team will verify your win and guide you through the claiming process.\n\n` +
             `Thank you to everyone who participated!\n\n` +
             `**Giveaway:** \`${gw.id}\``
         )

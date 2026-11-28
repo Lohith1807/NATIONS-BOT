@@ -1,19 +1,14 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getEmoji } = require('../../utils/botemoji.js');
 const {
-    ADMIN_CHANNEL_ID,
     getGiveaway,
     getGuildGiveaways,
-    rerollPendingWinners,
-    setPendingWinnerSpot,
-    buildAdminConfirmEmbed,
-    buildAdminConfirmButtons,
 } = require('../../utils/giveawayManager.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('giveaway-reroll')
-        .setDescription('Reroll a winner spot randomly or pick a specific participant (Admin Only)')
+        .setDescription('View current winners and reroll via Auto or Manual mode (Admin Only)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addStringOption(option =>
             option
@@ -25,15 +20,9 @@ module.exports = {
         .addIntegerOption(option =>
             option
                 .setName('spot')
-                .setDescription('Winner spot number to change/reroll (e.g. 1 for 1st spot)')
+                .setDescription('Optional: winner spot number to reroll (e.g. 1 for 1st spot)')
                 .setMinValue(1)
                 .setMaxValue(20)
-                .setRequired(false)
-        )
-        .addUserOption(option =>
-            option
-                .setName('winner')
-                .setDescription('Optional: search & pick a specific participant for this spot')
                 .setRequired(false)
         ),
 
@@ -63,19 +52,18 @@ module.exports = {
     async execute(interaction) {
         if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
             return interaction.reply({
-                content: `${getEmoji('bluex')} Only **Server Administrators** can reroll giveaway winners.`,
+                content: `❌ Only **Server Administrators** can reroll giveaway winners.`,
                 flags: MessageFlags.Ephemeral,
             });
         }
 
         const giveawayId = interaction.options.getString('giveaway-id').trim();
         const spotNumber = interaction.options.getInteger('spot');
-        const pickedUser = interaction.options.getUser('winner');
 
         const gw = getGiveaway(giveawayId);
         if (!gw || gw.guildId !== interaction.guild.id) {
             return interaction.reply({
-                content: `${getEmoji('bluex')} Giveaway \`${giveawayId}\` not found in this server.`,
+                content: `❌ Giveaway \`${giveawayId}\` not found in this server.`,
                 flags: MessageFlags.Ephemeral,
             });
         }
@@ -89,51 +77,53 @@ module.exports = {
 
         if (gw.announced) {
             return interaction.reply({
-                content: `${getEmoji('bluex')} Giveaway \`${gw.id}\` has already been confirmed and announced.`,
+                content: `❌ Giveaway \`${gw.id}\` has already been confirmed and announced.`,
                 flags: MessageFlags.Ephemeral,
             });
         }
 
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-        let result;
-        let summary;
-
-        if (pickedUser) {
-            const spotIdx = spotNumber ? spotNumber - 1 : 0;
-            result = setPendingWinnerSpot(gw.id, spotIdx, pickedUser.id, interaction.user);
-            if (!result.ok) {
-                return interaction.editReply({ content: `${getEmoji('bluex')} ${result.reason}` });
-            }
-            summary = `${getEmoji('gtick')} Updated **Spot #${result.spotIndex + 1}** for \`${result.giveaway.id}\` to <@${pickedUser.id}>!`;
-        } else {
-            const spotIdx = spotNumber ? spotNumber - 1 : null;
-            result = await rerollPendingWinners(interaction.client, gw.id, interaction.user, spotIdx);
-            if (!result.ok) {
-                return interaction.editReply({ content: `${getEmoji('bluex')} ${result.reason}` });
-            }
-            summary = spotIdx !== null
-                ? `${getEmoji('refresh')} Rerolled **Spot #${spotNumber}** for \`${result.giveaway.id}\` to <@${result.winners[spotIdx]}>!`
-                : `${getEmoji('refresh')} Rerolled all winners for \`${result.giveaway.id}\`: ${result.winners.map((id, i) => `**${i + 1}.** <@${id}>`).join(', ')}`;
+        const pending = gw.pendingWinners || [];
+        if (spotNumber && spotNumber > pending.length) {
+            return interaction.reply({
+                content: `❌ Invalid spot **#${spotNumber}**. This giveaway has **${pending.length}** winner spot(s).`,
+                flags: MessageFlags.Ephemeral,
+            });
         }
 
-        // Update the admin confirmation embed in-place
-        if (result.giveaway.adminConfirmMessageId) {
-            const adminCh = interaction.guild.channels.cache.get(ADMIN_CHANNEL_ID) ||
-                await interaction.guild.channels.fetch(ADMIN_CHANNEL_ID).catch(() => null);
-            if (adminCh) {
-                const confirmMsg = await adminCh.messages.fetch(result.giveaway.adminConfirmMessageId).catch(() => null);
-                if (confirmMsg) {
-                    await confirmMsg.edit({
-                        embeds: [buildAdminConfirmEmbed(result.giveaway, result.winners, null)],
-                        components: buildAdminConfirmButtons(result.giveaway.id, false, result.winners.length),
-                    }).catch(() => {});
-                }
-            }
-        }
+        const winnerLines = pending.length > 0
+            ? pending.map((id, i) => `**${i + 1}.** ${getEmoji('pinkdot')} <@${id}> (\`${id}\`)`).join('\n')
+            : '*No pending winners*';
 
-        return interaction.editReply({
-            content: `${summary}\n\nConfirm in <#${ADMIN_CHANNEL_ID}> when ready.`,
+        const spotKey = spotNumber ? String(spotNumber - 1) : 'all';
+        const scopeText = spotNumber ? `Spot #${spotNumber}` : 'All Spots';
+
+        const embed = new EmbedBuilder()
+            .setTitle(`Giveaway Reroll — ${gw.id}`)
+            .setColor('#F39C12')
+            .setDescription(
+                `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n` +
+                `${getEmoji('book')} **Target:** ${scopeText}\n` +
+                `${getEmoji('gob')} **Total Entries:** ${(gw.participants || []).length}\n\n` +
+                `${getEmoji('no1')} **Current Winner List:**\n${winnerLines}\n\n` +
+                `Choose **Auto** to randomly reroll, or **Manual** to search & pick a specific participant.`
+            )
+            .setFooter({ text: `Giveaway ID: ${gw.id}` })
+            .setTimestamp();
+
+        const autoBtn = new ButtonBuilder()
+            .setCustomId(`giveaway_cmd_auto:${gw.id}:${spotKey}`)
+            .setLabel('Auto')
+            .setStyle(ButtonStyle.Primary);
+
+        const manualBtn = new ButtonBuilder()
+            .setCustomId(`giveaway_cmd_manual:${gw.id}:${spotKey}`)
+            .setLabel('Manual')
+            .setStyle(ButtonStyle.Secondary);
+
+        return interaction.reply({
+            embeds: [embed],
+            components: [new ActionRowBuilder().addComponents(autoBtn, manualBtn)],
+            flags: MessageFlags.Ephemeral,
         });
     },
 };

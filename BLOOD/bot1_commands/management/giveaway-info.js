@@ -42,7 +42,7 @@ module.exports = {
 
         if (!gw || gw.guildId !== interaction.guild.id) {
             return interaction.reply({
-                content: `${getEmoji('bluex')} Giveaway \`${giveawayId}\` was not found in this server.`,
+                content: `❌ Giveaway \`${giveawayId}\` was not found in this server.`,
                 flags: MessageFlags.Ephemeral,
             });
         }
@@ -56,10 +56,10 @@ module.exports = {
             .setColor(isEnded ? '#95A5A6' : '#F1C40F')
             .addFields(
                 { name: 'Prize', value: `${getEmoji('gift')} ${gw.prize}`, inline: true },
-                { name: 'Status', value: `${getEmoji(isEnded ? 'bluex' : 'gtick')} ${isEnded ? 'Ended' : 'Active'}`, inline: true },
-                { name: 'Total Entries', value: `${getEmoji('mem')} ${(gw.participants || []).length}`, inline: true },
+                { name: 'Status', value: `${isEnded ? '❌' : getEmoji('gtick')} ${isEnded ? 'Ended' : 'Active'}`, inline: true },
+                { name: 'Total Entries', value: `${getEmoji('gob')} ${(gw.participants || []).length}`, inline: true },
                 { name: isEnded ? 'Ended' : 'Ends', value: `${getEmoji('alaram')} <t:${ts}:R> (<t:${ts}:f>)`, inline: true },
-                { name: 'Channel', value: `${getEmoji('arrow')} <#${gw.channelId}>`, inline: true },
+                { name: 'Channel', value: `${getEmoji('book')} <#${gw.channelId}>`, inline: true },
                 { name: 'Hosted By', value: `${getEmoji('crown')} <@${gw.createdBy}>`, inline: true }
             )
             .setTimestamp();
