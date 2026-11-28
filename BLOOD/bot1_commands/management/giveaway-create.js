@@ -97,6 +97,8 @@ module.exports = {
 
         try {
             const sentMsg = await targetChannel.send({
+                content: '@everyone',
+                allowedMentions: { parse: ['everyone'] },
                 embeds: [buildGiveawayEmbed(gw)],
                 components: [buildEnterButton(gw, false)],
             });

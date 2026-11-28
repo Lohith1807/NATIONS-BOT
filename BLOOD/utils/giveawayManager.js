@@ -226,11 +226,11 @@ function buildGiveawayEmbed(gw) {
     const ts = Math.floor((isEnded && gw.endedAt ? gw.endedAt : gw.endsAt) / 1000);
 
     return new EmbedBuilder()
-        .setTitle(gw.prize)
+        .setTitle('Blood Alliance Giveaway')
         .setColor(isEnded ? '#95A5A6' : '#F1C40F')
         .setDescription(
-            `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n` +
-            (gw.description ? `${gw.description}\n\n` : '\n') +
+            `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n\n` +
+            (gw.description ? `${gw.description}\n\n` : '') +
             `${getEmoji('book')} **${timeLabel}:** <t:${ts}:R> (<t:${ts}:f>)\n` +
             `${getEmoji('gob')} **Entries:** ${(gw.participants || []).length}\n` +
             `${getEmoji('crown')} **Hosted by:** <@${gw.createdBy}>`
