@@ -9,6 +9,7 @@ const {
     buildAdminConfirmEmbed,
     buildAdminConfirmButtons,
     confirmGiveawayWinners,
+    announceRerolledWinners,
     rerollPendingWinners,
     setPendingWinnerSpot,
 } = require('./giveawayManager.js');
@@ -31,10 +32,12 @@ async function refreshAdminConfirmMessage(interaction, gw) {
 }
 
 function buildRerollPanelEmbed(gw, spotKey, statusNote = null) {
-    const pending = gw.pendingWinners || [];
-    const winnerLines = pending.length > 0
-        ? pending.map((id, i) => `**${i + 1}.** ${getEmoji('pinkdot')} <@${id}> (\`${id}\`)`).join('\n')
-        : '*No pending winners*';
+    const winners = Array.isArray(gw.finalWinners) && gw.finalWinners.length > 0
+        ? gw.finalWinners
+        : (gw.pendingWinners || []);
+    const winnerLines = winners.length > 0
+        ? winners.map((id, i) => `**${i + 1}.** ${getEmoji('pinkdot')} <@${id}> (\`${id}\`)`).join('\n')
+        : '*No winners*';
     const scopeText = spotKey === 'all' ? 'All Spots' : `Spot #${parseInt(spotKey, 10) + 1}`;
 
     return new EmbedBuilder()
@@ -219,11 +222,11 @@ async function handleGiveawayInteractions(interaction) {
                 return true;
             }
 
-            await refreshAdminConfirmMessage(interaction, result.giveaway);
+            await announceRerolledWinners(interaction.client, result.giveaway, result.winners, spotIndex);
 
             const statusNote = spotIndex !== null
-                ? `${getEmoji('gtick')} **Auto-rerolled Spot #${spotIndex + 1}** to <@${result.winners[spotIndex]}>!`
-                : `${getEmoji('gtick')} **Auto-rerolled all winner spots!**`;
+                ? `${getEmoji('gtick')} **Auto-rerolled Spot #${spotIndex + 1}** to <@${result.winners[spotIndex]}> & announced in <#${result.giveaway.channelId}>!`
+                : `${getEmoji('gtick')} **Auto-rerolled all winner spots** & announced in <#${result.giveaway.channelId}>!`;
 
             await interaction.editReply({
                 embeds: [buildRerollPanelEmbed(result.giveaway, spotKey, statusNote)],
@@ -238,15 +241,17 @@ async function handleGiveawayInteractions(interaction) {
             if (!gw) {
                 return interaction.reply({ content: `❌ Giveaway not found.`, flags: MessageFlags.Ephemeral });
             }
-            if (gw.announced) {
-                return interaction.reply({ content: `❌ Winners have already been confirmed and announced.`, flags: MessageFlags.Ephemeral });
+            if (gw.status !== 'ended') {
+                return interaction.reply({ content: `❌ This giveaway has not ended yet.`, flags: MessageFlags.Ephemeral });
             }
 
             const spotKey = parts[2];
-            const pending = gw.pendingWinners || [];
+            const currentWinners = Array.isArray(gw.finalWinners) && gw.finalWinners.length > 0
+                ? gw.finalWinners
+                : (gw.pendingWinners || []);
 
             // If a specific spot was passed (e.g. /giveaway-reroll spot:1 -> Manual), or only 1 winner exists
-            if ((spotKey && spotKey !== 'all') || pending.length <= 1) {
+            if ((spotKey && spotKey !== 'all') || currentWinners.length <= 1) {
                 const targetIdx = spotKey && spotKey !== 'all' ? parseInt(spotKey, 10) : 0;
                 const userSelect = new UserSelectMenuBuilder()
                     .setCustomId(`giveaway_pick_user:${gw.id}:${targetIdx}`)
@@ -273,7 +278,7 @@ async function handleGiveawayInteractions(interaction) {
                 .setCustomId(`giveaway_pick_spot:${gw.id}`)
                 .setPlaceholder('First select which winner spot to change...')
                 .addOptions(
-                    pending.map((uid, i) => ({
+                    currentWinners.map((uid, i) => ({
                         label: `Spot #${i + 1}`,
                         description: `Currently selected user ID: ${uid}`,
                         value: String(i),
@@ -298,9 +303,9 @@ async function handleGiveawayInteractions(interaction) {
         if (action === 'giveaway_pick_spot') {
             const spotIndex = parseInt(interaction.values[0], 10);
             const gw = getGiveaway(giveawayId);
-            if (!gw || gw.announced) {
+            if (!gw || gw.status !== 'ended') {
                 return interaction.update({
-                    content: `❌ Giveaway is no longer awaiting confirmation.`,
+                    content: `❌ Giveaway is not in ended state.`,
                     components: [],
                 });
             }
@@ -333,10 +338,10 @@ async function handleGiveawayInteractions(interaction) {
                 return true;
             }
 
-            await refreshAdminConfirmMessage(interaction, result.giveaway);
+            await announceRerolledWinners(interaction.client, result.giveaway, result.winners, result.spotIndex);
 
             await interaction.editReply({
-                content: `${getEmoji('gtick')} **Spot #${result.spotIndex + 1}** updated to <@${selectedUserId}>! Confirm in <#${ADMIN_CHANNEL_ID}> when ready.`,
+                content: `${getEmoji('gtick')} **Spot #${result.spotIndex + 1}** updated to <@${selectedUserId}> and announced in <#${result.giveaway.channelId}>!`,
                 components: [],
             });
             return true;

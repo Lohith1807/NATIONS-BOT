@@ -30,7 +30,7 @@ module.exports = {
         try {
             const focused = interaction.options.getFocused().toLowerCase();
             const giveaways = getGuildGiveaways(interaction.guildId)
-                .filter(g => g.status === 'ended' && !g.announced)
+                .filter(g => g.status === 'ended')
                 .filter(g =>
                     g.id.toLowerCase().includes(focused) ||
                     (g.prize || '').toLowerCase().includes(focused)
@@ -75,24 +75,19 @@ module.exports = {
             });
         }
 
-        if (gw.announced) {
+        const currentWinners = Array.isArray(gw.finalWinners) && gw.finalWinners.length > 0
+            ? gw.finalWinners
+            : (gw.pendingWinners || []);
+        if (spotNumber && spotNumber > currentWinners.length) {
             return interaction.reply({
-                content: `❌ Giveaway \`${gw.id}\` has already been confirmed and announced.`,
+                content: `❌ Invalid spot **#${spotNumber}**. This giveaway has **${currentWinners.length}** winner spot(s).`,
                 flags: MessageFlags.Ephemeral,
             });
         }
 
-        const pending = gw.pendingWinners || [];
-        if (spotNumber && spotNumber > pending.length) {
-            return interaction.reply({
-                content: `❌ Invalid spot **#${spotNumber}**. This giveaway has **${pending.length}** winner spot(s).`,
-                flags: MessageFlags.Ephemeral,
-            });
-        }
-
-        const winnerLines = pending.length > 0
-            ? pending.map((id, i) => `**${i + 1}.** ${getEmoji('pinkdot')} <@${id}> (\`${id}\`)`).join('\n')
-            : '*No pending winners*';
+        const winnerLines = currentWinners.length > 0
+            ? currentWinners.map((id, i) => `**${i + 1}.** ${getEmoji('pinkdot')} <@${id}> (\`${id}\`)`).join('\n')
+            : '*No winners*';
 
         const spotKey = spotNumber ? String(spotNumber - 1) : 'all';
         const scopeText = spotNumber ? `Spot #${spotNumber}` : 'All Spots';
