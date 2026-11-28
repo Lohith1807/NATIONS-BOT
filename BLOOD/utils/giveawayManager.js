@@ -77,7 +77,7 @@ function getGuildGiveaways(guildId) {
     return loadGiveaways().filter(g => g.guildId === guildId);
 }
 
-function createGiveaway({ guildId, channelId, messageId, prize, description, winnerCount, endsAt, createdBy }) {
+function createGiveaway({ guildId, channelId, messageId, prize, description, claimTime, winnerCount, endsAt, createdBy }) {
     const giveaways = loadGiveaways();
     const id = generateGiveawayId(giveaways);
     const record = {
@@ -87,6 +87,7 @@ function createGiveaway({ guildId, channelId, messageId, prize, description, win
         messageId,
         prize,
         description: description || null,
+        claimTime: claimTime || '24h',
         winnerCount: Math.max(1, parseInt(winnerCount, 10) || 1),
         endsAt,
         createdAt: Date.now(),
@@ -341,6 +342,10 @@ function buildAdminConfirmButtons(giveawayId, disabled = false, winnerCount = 1)
 
 function buildWinnerAnnouncementEmbed(gw, winners) {
     const isSingle = winners.length === 1;
+    const claimTimeText = gw.claimTime || '24h';
+    const claimMs = parseDuration(claimTimeText);
+    const claimDeadlineTs = claimMs ? Math.floor((Date.now() + claimMs) / 1000) : null;
+    const claimNotice = `${getEmoji('alaram')} **Claim Time:** Within **${claimTimeText}**${claimDeadlineTs ? ` (<t:${claimDeadlineTs}:R>)` : ''} — *If you do not claim within this time, we will reroll the winner!*`;
 
     if (isSingle) {
         return new EmbedBuilder()
@@ -353,6 +358,7 @@ function buildWinnerAnnouncementEmbed(gw, winners) {
                 `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n\n` +
                 `Congratulations! You are the winner of this giveaway!\n\n` +
                 `${getEmoji('book')} To claim your gift, click **Claim Giveaway** below to open a ticket and our team will assist you with the claiming process.\n\n` +
+                `${claimNotice}\n\n` +
                 `Thank you to everyone who participated!\n\n` +
                 `**Giveaway:** \`${gw.id}\``
             )
@@ -370,6 +376,7 @@ function buildWinnerAnnouncementEmbed(gw, winners) {
             `${getEmoji('gift')} **Prize:** ${gw.prize}\n\n` +
             `You are officially the winner of this giveaway!\n\n` +
             `${getEmoji('book')} To claim your gift, click **Claim Giveaway** below to open your ticket. Our team will verify your win and guide you through the claiming process.\n\n` +
+            `${claimNotice}\n\n` +
             `Thank you to everyone who participated!\n\n` +
             `**Giveaway:** \`${gw.id}\``
         )

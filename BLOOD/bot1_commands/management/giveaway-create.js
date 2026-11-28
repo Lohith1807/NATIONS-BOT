@@ -46,6 +46,12 @@ module.exports = {
                 .setDescription('Details for the giveaway')
                 .setRequired(true)
         )
+        .addStringOption(option =>
+            option
+                .setName('claim-time')
+                .setDescription('Time limit for winners to claim (e.g. 12h, 24h, 2d)')
+                .setRequired(true)
+        )
         .addChannelOption(option =>
             option
                 .setName('channel')
@@ -77,6 +83,7 @@ module.exports = {
             await interaction.guild.channels.fetch(GIVEAWAY_CHANNEL_ID).catch(() => null) ||
             interaction.channel;
         const description = interaction.options.getString('description')?.trim() || null;
+        const claimTime = interaction.options.getString('claim-time').trim();
         const hostedByUser = interaction.options.getUser('hosted-by') || interaction.user;
         const tagRole = interaction.options.getRole('tag');
 
@@ -97,6 +104,7 @@ module.exports = {
             messageId: null,
             prize,
             description,
+            claimTime,
             winnerCount,
             endsAt,
             createdBy: hostedByUser.id,
@@ -132,6 +140,7 @@ module.exports = {
                     `${getEmoji('book')} **Prize:** ${gw.prize}\n` +
                     `${getEmoji('book')} **Channel:** <#${targetChannel.id}>\n` +
                     `${getEmoji('book')} **Internal Winner Count:** ${gw.winnerCount} *(kept private)*\n` +
+                    `${getEmoji('book')} **Claim Time:** ${claimTime}\n` +
                     `${getEmoji('book')} **Ends:** <t:${Math.floor(endsAt / 1000)}:R>`,
             });
         } catch (err) {
