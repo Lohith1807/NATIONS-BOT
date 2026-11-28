@@ -1,10 +1,13 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { getEmoji } = require('../../utils/botemoji.js');
 const {
+    ADMIN_CHANNEL_ID,
     getGiveaway,
     getGuildGiveaways,
     setManualWinner,
     resetWinnerSelection,
+    buildAdminConfirmEmbed,
+    buildAdminConfirmButtons,
 } = require('../../utils/giveawayManager.js');
 
 module.exports = {
@@ -79,9 +82,9 @@ module.exports = {
             });
         }
 
-        if (gw.status !== 'active') {
+        if (gw.announced) {
             return interaction.reply({
-                content: `${getEmoji('bluex')} Giveaway \`${gw.id}\` has already ended and can no longer be modified.`,
+                content: `${getEmoji('bluex')} Giveaway \`${gw.id}\` has already been confirmed and announced.`,
                 flags: MessageFlags.Ephemeral,
             });
         }
@@ -103,6 +106,20 @@ module.exports = {
             }
 
             const updated = result.giveaway;
+            if (updated.status === 'ended' && updated.adminConfirmMessageId) {
+                const adminCh = interaction.guild.channels.cache.get(ADMIN_CHANNEL_ID) ||
+                    await interaction.guild.channels.fetch(ADMIN_CHANNEL_ID).catch(() => null);
+                if (adminCh) {
+                    const confirmMsg = await adminCh.messages.fetch(updated.adminConfirmMessageId).catch(() => null);
+                    if (confirmMsg) {
+                        await confirmMsg.edit({
+                            embeds: [buildAdminConfirmEmbed(updated, updated.pendingWinners, null)],
+                            components: [buildAdminConfirmButtons(updated.id, false)],
+                        }).catch(() => {});
+                    }
+                }
+            }
+
             const currentList = updated.manualWinners.map(id => `<@${id}>`).join(', ');
             const replacedNote = result.replacedUserId
                 ? `\n${getEmoji('alaram')} Replaced previous selection <@${result.replacedUserId}> (limit: ${updated.winnerCount}).`
@@ -138,3 +155,4 @@ module.exports = {
         }
     },
 };
+

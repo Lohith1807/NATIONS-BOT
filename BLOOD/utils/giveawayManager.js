@@ -4,6 +4,8 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const { getEmoji } = require('./botemoji.js');
 
 const DATA_PATH = path.join(__dirname, '../data/giveaways.json');
+const ADMIN_CHANNEL_ID = process.env.GIVEAWAY_ADMIN_CHANNEL_ID || '1393858242337050664';
+const GIVEAWAY_CHANNEL_ID = process.env.GIVEAWAY_CHANNEL_ID || '1385474418771492924';
 
 // In-memory lock to prevent concurrent/duplicate giveaway ending
 const endingLocks = new Set();
@@ -35,9 +37,6 @@ function saveGiveaways(giveaways) {
     }
 }
 
-/**
- * Generates a sequential giveaway ID like GW-1001, GW-1002, etc.
- */
 function generateGiveawayId(giveaways) {
     let maxNum = 1000;
     for (const gw of giveaways) {
@@ -50,9 +49,6 @@ function generateGiveawayId(giveaways) {
     return `GW-${maxNum + 1}`;
 }
 
-/**
- * Parses duration strings such as 30s, 10m, 2h, 1d, 1w into milliseconds.
- */
 function parseDuration(str) {
     if (!str || typeof str !== 'string') return null;
     const match = str.trim().match(/^(\d+)\s*(s|sec|secs|m|min|mins|h|hr|hrs|d|day|days|w|wk|wks)$/i);
@@ -87,7 +83,7 @@ function createGiveaway({ guildId, channelId, messageId, prize, description, win
     const record = {
         id,
         guildId,
-        channelId,
+        channelId: channelId || GIVEAWAY_CHANNEL_ID,
         messageId,
         prize,
         description: description || null,
@@ -102,6 +98,10 @@ function createGiveaway({ guildId, channelId, messageId, prize, description, win
         selectionMode: 'auto',
         manualWinners: [],
         overrideHistory: [],
+        pendingWinners: [],
+        adminConfirmMessageId: null,
+        confirmedBy: null,
+        confirmedAt: null,
         finalWinners: [],
     };
     giveaways.push(record);
@@ -134,14 +134,11 @@ function addParticipant(giveawayId, userId) {
     return { ok: true, count: gw.participants.length, giveaway: gw };
 }
 
-/**
- * Secretly assigns or updates a manual winner for an active giveaway.
- */
 function setManualWinner(giveawayId, userId, adminUser) {
     const giveaways = loadGiveaways();
     const gw = giveaways.find(g => String(g.id).toUpperCase() === String(giveawayId).toUpperCase());
     if (!gw) return { ok: false, reason: 'Giveaway not found.' };
-    if (gw.status !== 'active') return { ok: false, reason: 'This giveaway has already ended.' };
+    if (gw.announced) return { ok: false, reason: 'This giveaway has already been confirmed and announced.' };
 
     if (!Array.isArray(gw.participants) || !gw.participants.includes(userId)) {
         return { ok: false, reason: `<@${userId}> has not entered this giveaway yet. Only participants who entered can be selected.` };
@@ -160,6 +157,10 @@ function setManualWinner(giveawayId, userId, adminUser) {
     gw.manualWinners.push(userId);
     gw.selectionMode = 'manual';
 
+    if (gw.status === 'ended' && !gw.announced) {
+        gw.pendingWinners = [...gw.manualWinners];
+    }
+
     if (!Array.isArray(gw.overrideHistory)) gw.overrideHistory = [];
     gw.overrideHistory.push({
         adminId: adminUser.id,
@@ -173,14 +174,11 @@ function setManualWinner(giveawayId, userId, adminUser) {
     return { ok: true, giveaway: gw, replacedUserId };
 }
 
-/**
- * Resets manual winner overrides and restores automatic random selection.
- */
 function resetWinnerSelection(giveawayId, adminUser, actionName = 'reset') {
     const giveaways = loadGiveaways();
     const gw = giveaways.find(g => String(g.id).toUpperCase() === String(giveawayId).toUpperCase());
     if (!gw) return { ok: false, reason: 'Giveaway not found.' };
-    if (gw.status !== 'active') return { ok: false, reason: 'This giveaway has already ended.' };
+    if (gw.announced) return { ok: false, reason: 'This giveaway has already been confirmed and announced.' };
 
     gw.manualWinners = [];
     gw.selectionMode = 'auto';
@@ -198,9 +196,6 @@ function resetWinnerSelection(giveawayId, adminUser, actionName = 'reset') {
     return { ok: true, giveaway: gw };
 }
 
-/**
- * Fisher-Yates shuffle to pick up to `count` random items without mutation.
- */
 function pickRandomWinners(pool, count) {
     const arr = [...pool];
     for (let i = arr.length - 1; i > 0; i--) {
@@ -210,15 +205,27 @@ function pickRandomWinners(pool, count) {
     return arr.slice(0, Math.min(count, arr.length));
 }
 
-/**
- * Builds the public giveaway embed (never exposes winner count or admin overrides).
- */
+async function getEligibleParticipants(client, gw) {
+    const rawParticipants = Array.from(new Set(gw.participants || []));
+    const guild = client.guilds.cache.get(gw.guildId) || await client.guilds.fetch(gw.guildId).catch(() => null);
+    if (!guild || rawParticipants.length === 0) return rawParticipants;
+
+    const validList = [];
+    for (const uid of rawParticipants) {
+        const member = guild.members.cache.get(uid) || await guild.members.fetch(uid).catch(() => null);
+        if (member && !member.user.bot) {
+            validList.push(uid);
+        }
+    }
+    return validList;
+}
+
 function buildGiveawayEmbed(gw) {
     const isEnded = gw.status === 'ended';
     const timeLabel = isEnded ? 'Ended' : 'Ends';
     const ts = Math.floor((isEnded && gw.endedAt ? gw.endedAt : gw.endsAt) / 1000);
 
-    const embed = new EmbedBuilder()
+    return new EmbedBuilder()
         .setTitle(`🎉 ${gw.prize}`)
         .setColor(isEnded ? '#95A5A6' : '#F1C40F')
         .setDescription(
@@ -229,8 +236,6 @@ function buildGiveawayEmbed(gw) {
         )
         .setFooter({ text: `Giveaway ID: ${gw.id}` })
         .setTimestamp(gw.endsAt);
-
-    return embed;
 }
 
 function buildEnterButton(gw, disabled = false) {
@@ -245,8 +250,49 @@ function buildEnterButton(gw, disabled = false) {
 }
 
 /**
- * Builds the attractive winner announcement embed without exposing winnerCount or admin overrides.
+ * Builds the Admin Confirmation Embed sent to the admin channel (1393858242337050664).
  */
+function buildAdminConfirmEmbed(gw, winners, confirmedById = null) {
+    const winnerList = winners.length > 0
+        ? winners.map(id => `- <@${id}> (\`${id}\`)`).join('\n')
+        : '*No eligible participants*';
+
+    const statusLine = confirmedById
+        ? `✅ **Status:** Confirmed & Announced by <@${confirmedById}>`
+        : `⏳ **Status:** Awaiting Admin Confirmation\n\nClick **Confirm Winner & Send Notification** to ping the winner(s) in <#${gw.channelId}>, or click **Change Winner** to randomly pick someone else.`;
+
+    return new EmbedBuilder()
+        .setTitle(`🛡️ Giveaway Winner Confirmation — ${gw.id}`)
+        .setColor(confirmedById ? '#2ECC71' : '#F39C12')
+        .setDescription(
+            `🎁 **Giveaway:** ${gw.prize}\n` +
+            `📍 **Giveaway Channel:** <#${gw.channelId}>\n` +
+            `👥 **Total Entries:** ${(gw.participants || []).length}\n\n` +
+            `🏆 **Selected Winner(s):**\n${winnerList}\n\n` +
+            statusLine
+        )
+        .setFooter({ text: `Giveaway ID: ${gw.id}` })
+        .setTimestamp();
+}
+
+function buildAdminConfirmButtons(giveawayId, disabled = false) {
+    const confirmBtn = new ButtonBuilder()
+        .setCustomId(`giveaway_confirm:${giveawayId}`)
+        .setLabel('Confirm Winner & Send Notification')
+        .setEmoji('✅')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(disabled);
+
+    const changeBtn = new ButtonBuilder()
+        .setCustomId(`giveaway_reroll:${giveawayId}`)
+        .setLabel('Change Winner')
+        .setEmoji('🔄')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(disabled);
+
+    return new ActionRowBuilder().addComponents(confirmBtn, changeBtn);
+}
+
 function buildWinnerAnnouncementEmbed(gw, winners) {
     const isSingle = winners.length === 1;
 
@@ -284,7 +330,8 @@ function buildWinnerAnnouncementEmbed(gw, winners) {
 }
 
 /**
- * Ends a giveaway, selects winners (manual override or automatic random), disables button, and announces.
+ * Ends a giveaway: closes entries, disables button, picks random (or manual) winners,
+ * and sends a confirmation embed to ADMIN_CHANNEL_ID (1393858242337050664).
  */
 async function endGiveaway(client, giveawayId) {
     if (endingLocks.has(giveawayId)) return false;
@@ -303,14 +350,15 @@ async function endGiveaway(client, giveawayId) {
         saveGiveaways(giveaways);
 
         const guild = client.guilds.cache.get(gw.guildId) || await client.guilds.fetch(gw.guildId).catch(() => null);
-        const channel = guild
-            ? (guild.channels.cache.get(gw.channelId) || await guild.channels.fetch(gw.channelId).catch(() => null))
-            : await client.channels.fetch(gw.channelId).catch(() => null);
+        const giveawayChannelId = gw.channelId || GIVEAWAY_CHANNEL_ID;
+        const giveawayChannel = guild
+            ? (guild.channels.cache.get(giveawayChannelId) || await guild.channels.fetch(giveawayChannelId).catch(() => null))
+            : await client.channels.fetch(giveawayChannelId).catch(() => null);
 
         // 2. Disable Enter Giveaway button on the original message
-        if (channel && gw.messageId) {
+        if (giveawayChannel && gw.messageId) {
             try {
-                const origMsg = await channel.messages.fetch(gw.messageId).catch(() => null);
+                const origMsg = await giveawayChannel.messages.fetch(gw.messageId).catch(() => null);
                 if (origMsg) {
                     await origMsg.edit({
                         embeds: [buildGiveawayEmbed(gw)],
@@ -320,27 +368,17 @@ async function endGiveaway(client, giveawayId) {
             } catch (_) {}
         }
 
-        // 3. Retrieve eligible participants (filter out users who left the server if guild is available)
-        const rawParticipants = Array.from(new Set(gw.participants || []));
-        let eligibleParticipants = rawParticipants;
-        if (guild && rawParticipants.length > 0) {
-            const validList = [];
-            for (const uid of rawParticipants) {
-                const member = guild.members.cache.get(uid) || await guild.members.fetch(uid).catch(() => null);
-                if (member && !member.user.bot) {
-                    validList.push(uid);
-                }
-            }
-            eligibleParticipants = validList;
-        }
+        // 3. Retrieve eligible participants
+        const eligibleParticipants = await getEligibleParticipants(client, gw);
 
         // 4. Handle zero eligible participants
         if (eligibleParticipants.length === 0) {
+            gw.pendingWinners = [];
             gw.finalWinners = [];
             gw.announced = true;
             saveGiveaways(giveaways);
 
-            if (channel) {
+            if (giveawayChannel) {
                 const noWinnerEmbed = new EmbedBuilder()
                     .setTitle('🎉 GIVEAWAY ENDED')
                     .setColor('#E74C3C')
@@ -349,52 +387,56 @@ async function endGiveaway(client, giveawayId) {
                         `This giveaway has ended, but there were no eligible participants.`
                     )
                     .setTimestamp();
-                await channel.send({ embeds: [noWinnerEmbed] }).catch(() => {});
+                await giveawayChannel.send({ embeds: [noWinnerEmbed] }).catch(() => {});
             }
 
-            // Notify administrator
-            if (gw.createdBy) {
-                try {
-                    const creator = await client.users.fetch(gw.createdBy).catch(() => null);
-                    if (creator) {
-                        await creator.send(
-                            `⚠️ Your giveaway **${gw.prize}** (\`${gw.id}\`) ended with **0 eligible participants**, so no winners were selected.`
-                        ).catch(() => {});
-                    }
-                } catch (_) {}
+            const adminChannel = guild
+                ? (guild.channels.cache.get(ADMIN_CHANNEL_ID) || await guild.channels.fetch(ADMIN_CHANNEL_ID).catch(() => null))
+                : await client.channels.fetch(ADMIN_CHANNEL_ID).catch(() => null);
+
+            if (adminChannel) {
+                await adminChannel.send({
+                    content: `⚠️ Giveaway **${gw.prize}** (\`${gw.id}\`) ended with **0 eligible participants**.`,
+                }).catch(() => {});
             }
 
             console.log(`ℹ️ [GiveawayManager] Giveaway ${gw.id} ended with 0 eligible participants.`);
             return true;
         }
 
-        // 5. Select winners (manual override takes priority over automatic random selection)
+        // 5. Select winners (random by default; uses manual override if admin set one)
         let selectedWinners = [];
         if (gw.selectionMode === 'manual' && Array.isArray(gw.manualWinners) && gw.manualWinners.length > 0) {
             selectedWinners = gw.manualWinners.filter(uid => eligibleParticipants.includes(uid));
         }
-
-        // If automatic mode or all manual winners became ineligible, select randomly
         if (selectedWinners.length === 0) {
             selectedWinners = pickRandomWinners(eligibleParticipants, gw.winnerCount || 1);
         }
 
-        // 6. Persist final winners and mark announced BEFORE sending to prevent duplicate announcements
-        gw.finalWinners = selectedWinners;
-        gw.announced = true;
+        gw.pendingWinners = selectedWinners;
         saveGiveaways(giveaways);
 
-        // 7. Announce winners in the original giveaway channel
-        if (channel && selectedWinners.length > 0) {
-            const mentionContent = selectedWinners.map(id => `<@${id}>`).join(' ');
-            const announcementEmbed = buildWinnerAnnouncementEmbed(gw, selectedWinners);
-            await channel.send({
-                content: `🎉 Congratulations ${mentionContent}!`,
-                embeds: [announcementEmbed],
+        // 6. Send confirmation embed to Admin Channel (1393858242337050664)
+        const adminChannel = guild
+            ? (guild.channels.cache.get(ADMIN_CHANNEL_ID) || await guild.channels.fetch(ADMIN_CHANNEL_ID).catch(() => null))
+            : await client.channels.fetch(ADMIN_CHANNEL_ID).catch(() => null);
+
+        if (adminChannel) {
+            const confirmMsg = await adminChannel.send({
+                embeds: [buildAdminConfirmEmbed(gw, selectedWinners)],
+                components: [buildAdminConfirmButtons(gw.id, false)],
             }).catch(err => {
-                console.error(`❌ [GiveawayManager] Failed to announce winners for ${gw.id}:`, err.message);
+                console.error(`❌ [GiveawayManager] Failed to send admin confirmation for ${gw.id}:`, err.message);
+                return null;
             });
-            console.log(`✅ [GiveawayManager] Giveaway ${gw.id} ended. Announced ${selectedWinners.length} winner(s).`);
+
+            if (confirmMsg) {
+                gw.adminConfirmMessageId = confirmMsg.id;
+                saveGiveaways(giveaways);
+            }
+            console.log(`✅ [GiveawayManager] Giveaway ${gw.id} ended. Sent winner confirmation to admin channel ${ADMIN_CHANNEL_ID}.`);
+        } else {
+            console.error(`❌ [GiveawayManager] Admin channel ${ADMIN_CHANNEL_ID} not found for giveaway ${gw.id}!`);
         }
 
         return true;
@@ -407,8 +449,106 @@ async function endGiveaway(client, giveawayId) {
 }
 
 /**
- * Periodic scheduler & startup recovery to end any expired active giveaways.
+ * Confirms pending winners and sends the public announcement in the giveaway channel.
  */
+async function confirmGiveawayWinners(client, giveawayId, adminUser) {
+    if (endingLocks.has(`confirm:${giveawayId}`)) {
+        return { ok: false, reason: 'Confirmation is already in progress.' };
+    }
+    endingLocks.add(`confirm:${giveawayId}`);
+
+    try {
+        const giveaways = loadGiveaways();
+        const gw = giveaways.find(g => String(g.id).toUpperCase() === String(giveawayId).toUpperCase());
+        if (!gw) return { ok: false, reason: 'Giveaway not found.' };
+        if (gw.announced) return { ok: false, reason: 'Winners have already been confirmed and announced.' };
+
+        const winners = Array.isArray(gw.pendingWinners) && gw.pendingWinners.length > 0
+            ? gw.pendingWinners
+            : (gw.manualWinners || []);
+
+        if (winners.length === 0) {
+            return { ok: false, reason: 'No pending winners found to confirm.' };
+        }
+
+        gw.finalWinners = winners;
+        gw.announced = true;
+        gw.confirmedBy = adminUser.id;
+        gw.confirmedAt = Date.now();
+        saveGiveaways(giveaways);
+
+        const guild = client.guilds.cache.get(gw.guildId) || await client.guilds.fetch(gw.guildId).catch(() => null);
+        const targetChannelId = gw.channelId || GIVEAWAY_CHANNEL_ID;
+        const channel = guild
+            ? (guild.channels.cache.get(targetChannelId) || await guild.channels.fetch(targetChannelId).catch(() => null))
+            : await client.channels.fetch(targetChannelId).catch(() => null);
+
+        if (!channel) {
+            return { ok: false, reason: `Giveaway channel <#${targetChannelId}> could not be found.` };
+        }
+
+        const mentionContent = winners.map(id => `<@${id}>`).join(' ');
+        const announcementEmbed = buildWinnerAnnouncementEmbed(gw, winners);
+        await channel.send({
+            content: `🎉 Congratulations ${mentionContent}!`,
+            embeds: [announcementEmbed],
+        });
+
+        console.log(`✅ [GiveawayManager] Admin ${adminUser.tag} confirmed & announced winners for ${gw.id} in #${channel.name || targetChannelId}.`);
+        return { ok: true, giveaway: gw, winners };
+    } catch (err) {
+        console.error(`❌ [GiveawayManager] Error confirming winners for ${giveawayId}:`, err);
+        return { ok: false, reason: err.message };
+    } finally {
+        endingLocks.delete(`confirm:${giveawayId}`);
+    }
+}
+
+/**
+ * Randomly selects a new set of pending winner(s), excluding current pending winners when possible.
+ */
+async function rerollPendingWinners(client, giveawayId, adminUser) {
+    const giveaways = loadGiveaways();
+    const gw = giveaways.find(g => String(g.id).toUpperCase() === String(giveawayId).toUpperCase());
+    if (!gw) return { ok: false, reason: 'Giveaway not found.' };
+    if (gw.announced) return { ok: false, reason: 'Winners have already been confirmed and announced.' };
+
+    const eligibleParticipants = await getEligibleParticipants(client, gw);
+    if (eligibleParticipants.length === 0) {
+        return { ok: false, reason: 'No eligible participants left in the server.' };
+    }
+
+    const currentPending = Array.isArray(gw.pendingWinners) ? gw.pendingWinners : [];
+    const count = gw.winnerCount || 1;
+
+    // Prefer participants who are NOT currently selected
+    const others = eligibleParticipants.filter(uid => !currentPending.includes(uid));
+    let newWinners = [];
+
+    if (others.length >= count) {
+        newWinners = pickRandomWinners(others, count);
+    } else if (others.length > 0) {
+        // Take all other eligible users first, then fill remaining slots from previous if needed
+        newWinners = [...others, ...pickRandomWinners(currentPending, count - others.length)];
+    } else {
+        return { ok: false, reason: 'No other eligible participants are available to switch to.' };
+    }
+
+    gw.pendingWinners = newWinners;
+    gw.selectionMode = 'auto';
+    if (!Array.isArray(gw.overrideHistory)) gw.overrideHistory = [];
+    gw.overrideHistory.push({
+        adminId: adminUser.id,
+        adminTag: adminUser.tag || adminUser.username,
+        action: 'reroll',
+        winners: [...newWinners],
+        timestamp: Date.now(),
+    });
+
+    saveGiveaways(giveaways);
+    return { ok: true, giveaway: gw, winners: newWinners };
+}
+
 async function checkGiveaways(client) {
     const giveaways = loadGiveaways();
     const now = Date.now();
@@ -420,6 +560,8 @@ async function checkGiveaways(client) {
 }
 
 module.exports = {
+    ADMIN_CHANNEL_ID,
+    GIVEAWAY_CHANNEL_ID,
     loadGiveaways,
     saveGiveaways,
     parseDuration,
@@ -432,6 +574,10 @@ module.exports = {
     resetWinnerSelection,
     buildGiveawayEmbed,
     buildEnterButton,
+    buildAdminConfirmEmbed,
+    buildAdminConfirmButtons,
     endGiveaway,
+    confirmGiveawayWinners,
+    rerollPendingWinners,
     checkGiveaways,
 };

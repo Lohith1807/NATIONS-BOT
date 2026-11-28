@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags, ChannelType } = require('discord.js');
 const { getEmoji } = require('../../utils/botemoji.js');
 const {
+    GIVEAWAY_CHANNEL_ID,
     parseDuration,
     createGiveaway,
     updateGiveawayMessageId,
@@ -58,7 +59,11 @@ module.exports = {
         const prize = interaction.options.getString('prize').trim();
         const durationStr = interaction.options.getString('duration').trim();
         const winnerCount = interaction.options.getInteger('winners') || 1;
-        const targetChannel = interaction.options.getChannel('channel') || interaction.channel;
+        const selectedChannel = interaction.options.getChannel('channel');
+        const targetChannel = selectedChannel ||
+            interaction.guild.channels.cache.get(GIVEAWAY_CHANNEL_ID) ||
+            await interaction.guild.channels.fetch(GIVEAWAY_CHANNEL_ID).catch(() => null) ||
+            interaction.channel;
         const description = interaction.options.getString('description')?.trim() || null;
 
         const durationMs = parseDuration(durationStr);
@@ -108,3 +113,4 @@ module.exports = {
         }
     },
 };
+
