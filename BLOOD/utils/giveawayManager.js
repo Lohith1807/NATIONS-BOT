@@ -519,19 +519,39 @@ async function announceRerolledWinners(client, gw, winners, spotIndex = null) {
 
     if (!channel || !winners || winners.length === 0) return;
 
+    // Delete the previous winner announcement message if it exists
+    if (gw.announcementMessageId) {
+        try {
+            const oldMsg = await channel.messages.fetch(gw.announcementMessageId).catch(() => null);
+            if (oldMsg) {
+                await oldMsg.delete().catch(() => {});
+            }
+        } catch (_) {}
+    }
+
     const pingUsers = spotIndex !== null && spotIndex !== undefined && winners[spotIndex]
         ? [winners[spotIndex]]
         : winners;
     const mentionContent = pingUsers.map(id => `<@${id}>`).join(' ');
     const announcementEmbed = buildWinnerAnnouncementEmbed(gw, winners);
 
-    await channel.send({
+    const newMsg = await channel.send({
         content: `${getEmoji('refresh')} **Giveaway Rerolled!** ${getEmoji('gift')} Congratulations ${mentionContent}!`,
         embeds: [announcementEmbed],
         components: [buildClaimButton(gw.id)],
     }).catch(err => {
         console.error(`❌ [GiveawayManager] Failed to send reroll announcement for ${gw.id}:`, err.message);
+        return null;
     });
+
+    if (newMsg) {
+        const giveaways = loadGiveaways();
+        const stored = giveaways.find(g => g.id === gw.id);
+        if (stored) {
+            stored.announcementMessageId = newMsg.id;
+            saveGiveaways(giveaways);
+        }
+    }
 }
 
 /**
