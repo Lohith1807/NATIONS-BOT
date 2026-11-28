@@ -14,6 +14,12 @@ module.exports = {
         .setName('giveaway-create')
         .setDescription('Start a new giveaway in a channel (Admin Only)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addUserOption(option =>
+            option
+                .setName('hosted-by')
+                .setDescription('User hosting this giveaway')
+                .setRequired(true)
+        )
         .addStringOption(option =>
             option
                 .setName('prize')
@@ -29,28 +35,22 @@ module.exports = {
         .addIntegerOption(option =>
             option
                 .setName('winners')
-                .setDescription('Number of winners (hidden from public, default 1)')
+                .setDescription('Number of winners (hidden from public)')
                 .setMinValue(1)
                 .setMaxValue(20)
-                .setRequired(false)
-        )
-        .addChannelOption(option =>
-            option
-                .setName('channel')
-                .setDescription('Channel to post the giveaway in (defaults to current channel)')
-                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-                .setRequired(false)
+                .setRequired(true)
         )
         .addStringOption(option =>
             option
                 .setName('description')
-                .setDescription('Optional extra details for the giveaway')
-                .setRequired(false)
+                .setDescription('Details for the giveaway')
+                .setRequired(true)
         )
-        .addUserOption(option =>
+        .addChannelOption(option =>
             option
-                .setName('hosted-by')
-                .setDescription('User hosting this giveaway (defaults to you)')
+                .setName('channel')
+                .setDescription('Channel to post the giveaway in (defaults to giveaway channel)')
+                .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
                 .setRequired(false)
         ),
 
