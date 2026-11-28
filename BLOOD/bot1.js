@@ -116,14 +116,17 @@ bot1.once("ready", async () => {
 
 bot1.on("interactionCreate", async (interaction) => {
     try {
-        const { handleReminderInteractions } = require('./utils/reminderInteractions.js');
-        if (await handleReminderInteractions(interaction)) return;
+        const reminderMod = require('./utils/reminderInteractions.js');
+        const handleReminder = typeof reminderMod === 'function' ? reminderMod : reminderMod?.handleReminderInteractions;
+        if (typeof handleReminder === 'function' && await handleReminder(interaction)) return;
 
-        const { handleBaseInteractions } = require('./utils/baseInteractions.js');
-        if (await handleBaseInteractions(interaction)) return;
+        const baseMod = require('./utils/baseInteractions.js');
+        const handleBase = typeof baseMod === 'function' ? baseMod : baseMod?.handleBaseInteractions;
+        if (typeof handleBase === 'function' && await handleBase(interaction)) return;
 
-        const { handleGiveawayInteractions } = require('./utils/giveawayInteractions.js');
-        if (await handleGiveawayInteractions(interaction)) return;
+        const giveawayMod = require('./utils/giveawayInteractions.js');
+        const handleGiveaway = typeof giveawayMod === 'function' ? giveawayMod : giveawayMod?.handleGiveawayInteractions;
+        if (typeof handleGiveaway === 'function' && await handleGiveaway(interaction)) return;
         if (interaction.isChatInputCommand()) {
             const command = bot1.commands.get(interaction.commandName);
             if (!command) return;
