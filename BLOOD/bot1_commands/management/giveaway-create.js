@@ -52,6 +52,12 @@ module.exports = {
                 .setDescription('Channel to post the giveaway in (defaults to giveaway channel)')
                 .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
                 .setRequired(false)
+        )
+        .addRoleOption(option =>
+            option
+                .setName('tag')
+                .setDescription('Role or @everyone to ping (defaults to @everyone)')
+                .setRequired(false)
         ),
 
     async execute(interaction) {
@@ -72,6 +78,7 @@ module.exports = {
             interaction.channel;
         const description = interaction.options.getString('description')?.trim() || null;
         const hostedByUser = interaction.options.getUser('hosted-by') || interaction.user;
+        const tagRole = interaction.options.getRole('tag');
 
         const durationMs = parseDuration(durationStr);
         if (!durationMs) {
@@ -96,9 +103,22 @@ module.exports = {
         });
 
         try {
+            let pingContent = '@everyone';
+            let allowedMentions = { parse: ['everyone'] };
+
+            if (tagRole) {
+                if (tagRole.id === interaction.guild.id) {
+                    pingContent = '@everyone';
+                    allowedMentions = { parse: ['everyone'] };
+                } else {
+                    pingContent = `<@&${tagRole.id}>`;
+                    allowedMentions = { roles: [tagRole.id] };
+                }
+            }
+
             const sentMsg = await targetChannel.send({
-                content: '@everyone',
-                allowedMentions: { parse: ['everyone'] },
+                content: pingContent,
+                allowedMentions,
                 embeds: [buildGiveawayEmbed(gw)],
                 components: [buildEnterButton(gw, false)],
             });
