@@ -11,24 +11,30 @@ const {
 } = require('./giveawayManager.js');
 
 /**
- * Handles persistent giveaway button interactions:
+ * Handles persistent giveaway button & select-menu interactions:
  * - giveaway_enter:<id>
  * - giveaway_confirm:<id>
- * - giveaway_reroll:<id>
+ * - giveaway_reroll:<id>:all | giveaway_reroll:<id>:<spotIndex>
+ * - giveaway_reroll_select:<id>
  */
 async function handleGiveawayInteractions(interaction) {
-    if (!interaction.isButton()) return false;
-    const { customId } = interaction;
+    const isBtn = interaction.isButton();
+    const isSelect = interaction.isStringSelectMenu();
+    if (!isBtn && !isSelect) return false;
 
+    const { customId } = interaction;
     if (
         !customId.startsWith('giveaway_enter:') &&
         !customId.startsWith('giveaway_confirm:') &&
-        !customId.startsWith('giveaway_reroll:')
+        !customId.startsWith('giveaway_reroll:') &&
+        !customId.startsWith('giveaway_reroll_select:')
     ) {
         return false;
     }
 
-    const [action, giveawayId] = customId.split(':');
+    const parts = customId.split(':');
+    const action = parts[0];
+    const giveawayId = parts[1];
 
     try {
         // 1. User enters giveaway
@@ -63,7 +69,7 @@ async function handleGiveawayInteractions(interaction) {
         // Admin-only actions below
         if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
             await interaction.reply({
-                content: `${getEmoji('bluex')} Only **Server Administrators** can confirm or change giveaway winners.`,
+                content: `${getEmoji('bluex')} Only **Server Administrators** can confirm or reroll giveaway winners.`,
                 flags: MessageFlags.Ephemeral,
             });
             return true;
@@ -84,7 +90,7 @@ async function handleGiveawayInteractions(interaction) {
 
             await interaction.editReply({
                 embeds: [buildAdminConfirmEmbed(result.giveaway, result.winners, interaction.user.id)],
-                components: [buildAdminConfirmButtons(result.giveaway.id, true)],
+                components: buildAdminConfirmButtons(result.giveaway.id, true, result.winners.length),
             });
 
             await interaction.followUp({
@@ -94,11 +100,18 @@ async function handleGiveawayInteractions(interaction) {
             return true;
         }
 
-        // 3. Admin changes winner -> picks new random winner & updates confirmation embed
-        if (action === 'giveaway_reroll') {
+        // 3. Admin rerolls all winners OR a specific spot index
+        if (action === 'giveaway_reroll' || action === 'giveaway_reroll_select') {
             await interaction.deferUpdate();
 
-            const result = await rerollPendingWinners(interaction.client, giveawayId, interaction.user);
+            let spotIndex = null;
+            if (action === 'giveaway_reroll_select') {
+                spotIndex = parseInt(interaction.values[0], 10);
+            } else if (parts[2] && parts[2] !== 'all') {
+                spotIndex = parseInt(parts[2], 10);
+            }
+
+            const result = await rerollPendingWinners(interaction.client, giveawayId, interaction.user, spotIndex);
             if (!result.ok) {
                 await interaction.followUp({
                     content: `${getEmoji('bluex')} ${result.reason}`,
@@ -109,12 +122,15 @@ async function handleGiveawayInteractions(interaction) {
 
             await interaction.editReply({
                 embeds: [buildAdminConfirmEmbed(result.giveaway, result.winners, null)],
-                components: [buildAdminConfirmButtons(result.giveaway.id, false)],
+                components: buildAdminConfirmButtons(result.giveaway.id, false, result.winners.length),
             });
 
-            const winnerMentions = result.winners.map(id => `<@${id}>`).join(', ');
+            const msg = spotIndex !== null
+                ? `${getEmoji('refresh')} Rerolled **Spot #${spotIndex + 1}** to <@${result.winners[spotIndex]}>! Confirm when ready or reroll another spot.`
+                : `${getEmoji('refresh')} Rerolled all winners: ${result.winners.map(id => `<@${id}>`).join(', ')}. Confirm when ready or reroll again.`;
+
             await interaction.followUp({
-                content: `${getEmoji('refresh')} Winner changed to ${winnerMentions}. Please **Confirm Winner & Send Notification** or click **Change Winner** again.`,
+                content: msg,
                 flags: MessageFlags.Ephemeral,
             });
             return true;
@@ -122,7 +138,7 @@ async function handleGiveawayInteractions(interaction) {
 
         return false;
     } catch (err) {
-        console.error('❌ [GiveawayInteractions] Error handling button:', err);
+        console.error('❌ [GiveawayInteractions] Error handling interaction:', err);
         try {
             if (interaction.deferred || interaction.replied) {
                 await interaction.followUp({

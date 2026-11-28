@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const { getEmoji, getEmojiObject } = require('./botemoji.js');
 
 const DATA_PATH = path.join(__dirname, '../data/giveaways.json');
@@ -257,12 +257,12 @@ function buildEnterButton(gw, disabled = false) {
  */
 function buildAdminConfirmEmbed(gw, winners, confirmedById = null) {
     const winnerList = winners.length > 0
-        ? winners.map(id => `${getEmoji('pinkdot')} <@${id}> (\`${id}\`)`).join('\n')
+        ? winners.map((id, idx) => `**${idx + 1}.** ${getEmoji('pinkdot')} <@${id}> (\`${id}\`)`).join('\n')
         : '*No eligible participants*';
 
     const statusLine = confirmedById
         ? `${getEmoji('gtick')} **Status:** Confirmed & Announced by <@${confirmedById}>`
-        : `${getEmoji('alaram')} **Status:** Awaiting Admin Confirmation\n\nClick **Confirm Winner & Send Notification** to ping the winner(s) in <#${gw.channelId}>, or click **Change Winner** to randomly pick someone else.`;
+        : `${getEmoji('alaram')} **Status:** Awaiting Admin Confirmation\n\nClick **Confirm Winner & Send Notification** to ping the winner(s) in <#${gw.channelId}>, or reroll a specific spot below.`;
 
     return new EmbedBuilder()
         .setTitle(`Giveaway Winner Confirmation — ${gw.id}`)
@@ -279,7 +279,7 @@ function buildAdminConfirmEmbed(gw, winners, confirmedById = null) {
         .setTimestamp();
 }
 
-function buildAdminConfirmButtons(giveawayId, disabled = false) {
+function buildAdminConfirmButtons(giveawayId, disabled = false, winnerCount = 1) {
     const confirmBtn = new ButtonBuilder()
         .setCustomId(`giveaway_confirm:${giveawayId}`)
         .setLabel('Confirm Winner & Send Notification')
@@ -289,16 +289,48 @@ function buildAdminConfirmButtons(giveawayId, disabled = false) {
     const tickEmoji = getEmojiObject('gtick');
     if (tickEmoji) confirmBtn.setEmoji(tickEmoji);
 
-    const changeBtn = new ButtonBuilder()
-        .setCustomId(`giveaway_reroll:${giveawayId}`)
-        .setLabel('Change Winner')
+    const rerollAllBtn = new ButtonBuilder()
+        .setCustomId(`giveaway_reroll:${giveawayId}:all`)
+        .setLabel(winnerCount > 1 ? 'Reroll All' : 'Reroll Winner')
         .setStyle(ButtonStyle.Primary)
         .setDisabled(disabled);
 
     const refreshEmoji = getEmojiObject('refresh');
-    if (refreshEmoji) changeBtn.setEmoji(refreshEmoji);
+    if (refreshEmoji) rerollAllBtn.setEmoji(refreshEmoji);
 
-    return new ActionRowBuilder().addComponents(confirmBtn, changeBtn);
+    const rows = [new ActionRowBuilder().addComponents(confirmBtn, rerollAllBtn)];
+
+    // Add per-spot reroll controls when there are multiple winner spots
+    if (winnerCount > 1) {
+        if (winnerCount <= 5) {
+            const spotRow = new ActionRowBuilder();
+            for (let i = 0; i < winnerCount; i++) {
+                const spotBtn = new ButtonBuilder()
+                    .setCustomId(`giveaway_reroll:${giveawayId}:${i}`)
+                    .setLabel(`Reroll #${i + 1}`)
+                    .setStyle(ButtonStyle.Secondary)
+                    .setDisabled(disabled);
+                if (refreshEmoji) spotBtn.setEmoji(refreshEmoji);
+                spotRow.addComponents(spotBtn);
+            }
+            rows.push(spotRow);
+        } else {
+            const select = new StringSelectMenuBuilder()
+                .setCustomId(`giveaway_reroll_select:${giveawayId}`)
+                .setPlaceholder('Select a winner spot to reroll...')
+                .setDisabled(disabled)
+                .addOptions(
+                    Array.from({ length: Math.min(winnerCount, 25) }, (_, i) => ({
+                        label: `Reroll Spot #${i + 1}`,
+                        description: `Pick a new random winner for spot #${i + 1}`,
+                        value: String(i),
+                    }))
+                );
+            rows.push(new ActionRowBuilder().addComponents(select));
+        }
+    }
+
+    return rows;
 }
 
 function buildWinnerAnnouncementEmbed(gw, winners) {
@@ -414,10 +446,10 @@ async function endGiveaway(client, giveawayId) {
             return true;
         }
 
-        // 5. Select winners (random by default; uses manual override if admin set one)
+        // 5. Select winners (random by default, never duplicate; uses manual override if admin set one)
         let selectedWinners = [];
         if (gw.selectionMode === 'manual' && Array.isArray(gw.manualWinners) && gw.manualWinners.length > 0) {
-            selectedWinners = gw.manualWinners.filter(uid => eligibleParticipants.includes(uid));
+            selectedWinners = Array.from(new Set(gw.manualWinners.filter(uid => eligibleParticipants.includes(uid))));
         }
         if (selectedWinners.length === 0) {
             selectedWinners = pickRandomWinners(eligibleParticipants, gw.winnerCount || 1);
@@ -434,7 +466,7 @@ async function endGiveaway(client, giveawayId) {
         if (adminChannel) {
             const confirmMsg = await adminChannel.send({
                 embeds: [buildAdminConfirmEmbed(gw, selectedWinners)],
-                components: [buildAdminConfirmButtons(gw.id, false)],
+                components: buildAdminConfirmButtons(gw.id, false, selectedWinners.length),
             }).catch(err => {
                 console.error(`❌ [GiveawayManager] Failed to send admin confirmation for ${gw.id}:`, err.message);
                 return null;
@@ -515,9 +547,10 @@ async function confirmGiveawayWinners(client, giveawayId, adminUser) {
 }
 
 /**
- * Randomly selects a new set of pending winner(s), excluding current pending winners when possible.
+ * Randomly rerolls either all pending winners or a single specific spot index (0-based),
+ * guaranteeing no duplicate winners across spots.
  */
-async function rerollPendingWinners(client, giveawayId, adminUser) {
+async function rerollPendingWinners(client, giveawayId, adminUser, spotIndex = null) {
     const giveaways = loadGiveaways();
     const gw = giveaways.find(g => String(g.id).toUpperCase() === String(giveawayId).toUpperCase());
     if (!gw) return { ok: false, reason: 'Giveaway not found.' };
@@ -528,35 +561,49 @@ async function rerollPendingWinners(client, giveawayId, adminUser) {
         return { ok: false, reason: 'No eligible participants left in the server.' };
     }
 
-    const currentPending = Array.isArray(gw.pendingWinners) ? gw.pendingWinners : [];
-    const count = gw.winnerCount || 1;
+    const currentPending = Array.isArray(gw.pendingWinners) ? [...gw.pendingWinners] : [];
+    const count = currentPending.length || gw.winnerCount || 1;
 
-    // Prefer participants who are NOT currently selected
-    const others = eligibleParticipants.filter(uid => !currentPending.includes(uid));
-    let newWinners = [];
+    // Exclude ALL currently selected winners so we never pick a duplicate player
+    const availablePool = eligibleParticipants.filter(uid => !currentPending.includes(uid));
 
-    if (others.length >= count) {
-        newWinners = pickRandomWinners(others, count);
-    } else if (others.length > 0) {
-        // Take all other eligible users first, then fill remaining slots from previous if needed
-        newWinners = [...others, ...pickRandomWinners(currentPending, count - others.length)];
+    let newWinners;
+    if (spotIndex !== null && spotIndex !== undefined && !isNaN(spotIndex)) {
+        const idx = parseInt(spotIndex, 10);
+        if (idx < 0 || idx >= currentPending.length) {
+            return { ok: false, reason: `Invalid winner spot #${idx + 1}.` };
+        }
+        if (availablePool.length === 0) {
+            return { ok: false, reason: 'No other eligible participants are available to replace this spot without duplicating an existing winner.' };
+        }
+        const [replacement] = pickRandomWinners(availablePool, 1);
+        newWinners = [...currentPending];
+        newWinners[idx] = replacement;
     } else {
-        return { ok: false, reason: 'No other eligible participants are available to switch to.' };
+        if (availablePool.length >= count) {
+            newWinners = pickRandomWinners(availablePool, count);
+        } else if (availablePool.length > 0) {
+            // Take all unused eligible participants + fill remaining slots without duplicates
+            const needed = Math.min(count, eligibleParticipants.length) - availablePool.length;
+            newWinners = [...availablePool, ...pickRandomWinners(currentPending, needed)];
+        } else {
+            return { ok: false, reason: 'No other eligible participants are available to reroll to.' };
+        }
     }
 
-    gw.pendingWinners = newWinners;
+    gw.pendingWinners = Array.from(new Set(newWinners));
     gw.selectionMode = 'auto';
     if (!Array.isArray(gw.overrideHistory)) gw.overrideHistory = [];
     gw.overrideHistory.push({
         adminId: adminUser.id,
         adminTag: adminUser.tag || adminUser.username,
-        action: 'reroll',
-        winners: [...newWinners],
+        action: spotIndex !== null && spotIndex !== undefined ? `reroll_spot_${Number(spotIndex) + 1}` : 'reroll_all',
+        winners: [...gw.pendingWinners],
         timestamp: Date.now(),
     });
 
     saveGiveaways(giveaways);
-    return { ok: true, giveaway: gw, winners: newWinners };
+    return { ok: true, giveaway: gw, winners: gw.pendingWinners, rerolledSpot: spotIndex };
 }
 
 async function checkGiveaways(client) {

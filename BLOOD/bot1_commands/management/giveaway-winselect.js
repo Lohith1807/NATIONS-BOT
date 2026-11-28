@@ -114,7 +114,7 @@ module.exports = {
                     if (confirmMsg) {
                         await confirmMsg.edit({
                             embeds: [buildAdminConfirmEmbed(updated, updated.pendingWinners, null)],
-                            components: [buildAdminConfirmButtons(updated.id, false)],
+                            components: buildAdminConfirmButtons(updated.id, false, updated.pendingWinners.length),
                         }).catch(() => {});
                     }
                 }
