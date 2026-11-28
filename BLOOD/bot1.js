@@ -76,6 +76,10 @@ bot1.once("ready", async () => {
     const { checkReminders } = require('./utils/reminderManager.js');
     setInterval(() => checkReminders(bot1), 10000);
 
+    const { checkGiveaways } = require('./utils/giveawayManager.js');
+    checkGiveaways(bot1);
+    setInterval(() => checkGiveaways(bot1), 10000);
+
     // Scheduled DM for TAU Token Update (8 AM IST, every 6 days)
     try {
         const cron = require('node-cron');
@@ -117,6 +121,9 @@ bot1.on("interactionCreate", async (interaction) => {
 
         const { handleBaseInteractions } = require('./utils/baseInteractions.js');
         if (await handleBaseInteractions(interaction)) return;
+
+        const { handleGiveawayInteractions } = require('./utils/giveawayInteractions.js');
+        if (await handleGiveawayInteractions(interaction)) return;
         if (interaction.isChatInputCommand()) {
             const command = bot1.commands.get(interaction.commandName);
             if (!command) return;
