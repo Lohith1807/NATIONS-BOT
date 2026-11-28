@@ -345,7 +345,9 @@ function buildWinnerAnnouncementEmbed(gw, winners) {
     const claimTimeText = gw.claimTime || '24h';
     const claimMs = parseDuration(claimTimeText);
     const claimDeadlineTs = claimMs ? Math.floor((Date.now() + claimMs) / 1000) : null;
-    const claimNotice = `${getEmoji('alaram')} **Claim Time:** Within **${claimTimeText}**${claimDeadlineTs ? ` (<t:${claimDeadlineTs}:R>)` : ''} — *If you do not claim within this time, we will reroll the winner!*`;
+    const claimNotice =
+        `${getEmoji('alaram')} **Claim Time:** Within **${claimTimeText}**${claimDeadlineTs ? ` (<t:${claimDeadlineTs}:R>)` : ''} — *If you do not claim within this time, we will reroll the winner!*\n` +
+        `${getEmoji('sheild')} *Decisions made by **BA Staff** or **Owners** regarding rerolls after the claim time period will be final.*`;
 
     if (isSingle) {
         return new EmbedBuilder()
