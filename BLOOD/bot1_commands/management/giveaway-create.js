@@ -46,6 +46,12 @@ module.exports = {
                 .setName('description')
                 .setDescription('Optional extra details for the giveaway')
                 .setRequired(false)
+        )
+        .addUserOption(option =>
+            option
+                .setName('hosted-by')
+                .setDescription('User hosting this giveaway (defaults to you)')
+                .setRequired(false)
         ),
 
     async execute(interaction) {
@@ -65,6 +71,7 @@ module.exports = {
             await interaction.guild.channels.fetch(GIVEAWAY_CHANNEL_ID).catch(() => null) ||
             interaction.channel;
         const description = interaction.options.getString('description')?.trim() || null;
+        const hostedByUser = interaction.options.getUser('hosted-by') || interaction.user;
 
         const durationMs = parseDuration(durationStr);
         if (!durationMs) {
@@ -85,7 +92,7 @@ module.exports = {
             description,
             winnerCount,
             endsAt,
-            createdBy: interaction.user.id,
+            createdBy: hostedByUser.id,
         });
 
         try {

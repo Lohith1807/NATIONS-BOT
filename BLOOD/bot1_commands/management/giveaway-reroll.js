@@ -5,6 +5,7 @@ const {
     getGiveaway,
     getGuildGiveaways,
     rerollPendingWinners,
+    setPendingWinnerSpot,
     buildAdminConfirmEmbed,
     buildAdminConfirmButtons,
 } = require('../../utils/giveawayManager.js');
@@ -12,7 +13,7 @@ const {
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('giveaway-reroll')
-        .setDescription('Reroll a giveaway winner spot or all winners randomly (Admin Only)')
+        .setDescription('Reroll a winner spot randomly or pick a specific participant (Admin Only)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addStringOption(option =>
             option
@@ -24,9 +25,15 @@ module.exports = {
         .addIntegerOption(option =>
             option
                 .setName('spot')
-                .setDescription('Winner spot number to reroll (e.g. 1 for 1st spot). Leave empty to reroll all.')
+                .setDescription('Winner spot number to change/reroll (e.g. 1 for 1st spot)')
                 .setMinValue(1)
                 .setMaxValue(20)
+                .setRequired(false)
+        )
+        .addUserOption(option =>
+            option
+                .setName('winner')
+                .setDescription('Optional: search & pick a specific participant for this spot')
                 .setRequired(false)
         ),
 
@@ -63,7 +70,7 @@ module.exports = {
 
         const giveawayId = interaction.options.getString('giveaway-id').trim();
         const spotNumber = interaction.options.getInteger('spot');
-        const spotIndex = spotNumber ? spotNumber - 1 : null;
+        const pickedUser = interaction.options.getUser('winner');
 
         const gw = getGiveaway(giveawayId);
         if (!gw || gw.guildId !== interaction.guild.id) {
@@ -89,14 +96,28 @@ module.exports = {
 
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-        const result = await rerollPendingWinners(interaction.client, gw.id, interaction.user, spotIndex);
-        if (!result.ok) {
-            return interaction.editReply({
-                content: `${getEmoji('bluex')} ${result.reason}`,
-            });
+        let result;
+        let summary;
+
+        if (pickedUser) {
+            const spotIdx = spotNumber ? spotNumber - 1 : 0;
+            result = setPendingWinnerSpot(gw.id, spotIdx, pickedUser.id, interaction.user);
+            if (!result.ok) {
+                return interaction.editReply({ content: `${getEmoji('bluex')} ${result.reason}` });
+            }
+            summary = `${getEmoji('gtick')} Updated **Spot #${result.spotIndex + 1}** for \`${result.giveaway.id}\` to <@${pickedUser.id}>!`;
+        } else {
+            const spotIdx = spotNumber ? spotNumber - 1 : null;
+            result = await rerollPendingWinners(interaction.client, gw.id, interaction.user, spotIdx);
+            if (!result.ok) {
+                return interaction.editReply({ content: `${getEmoji('bluex')} ${result.reason}` });
+            }
+            summary = spotIdx !== null
+                ? `${getEmoji('refresh')} Rerolled **Spot #${spotNumber}** for \`${result.giveaway.id}\` to <@${result.winners[spotIdx]}>!`
+                : `${getEmoji('refresh')} Rerolled all winners for \`${result.giveaway.id}\`: ${result.winners.map((id, i) => `**${i + 1}.** <@${id}>`).join(', ')}`;
         }
 
-        // Update the admin confirmation embed in-place if it exists
+        // Update the admin confirmation embed in-place
         if (result.giveaway.adminConfirmMessageId) {
             const adminCh = interaction.guild.channels.cache.get(ADMIN_CHANNEL_ID) ||
                 await interaction.guild.channels.fetch(ADMIN_CHANNEL_ID).catch(() => null);
@@ -110,10 +131,6 @@ module.exports = {
                 }
             }
         }
-
-        const summary = spotIndex !== null
-            ? `${getEmoji('refresh')} Rerolled **Spot #${spotNumber}** for \`${result.giveaway.id}\` to <@${result.winners[spotIndex]}>!`
-            : `${getEmoji('refresh')} Rerolled all winners for \`${result.giveaway.id}\`: ${result.winners.map((id, i) => `**${i + 1}.** <@${id}>`).join(', ')}`;
 
         return interaction.editReply({
             content: `${summary}\n\nConfirm in <#${ADMIN_CHANNEL_ID}> when ready.`,

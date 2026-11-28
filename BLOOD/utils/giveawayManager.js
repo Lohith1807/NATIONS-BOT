@@ -230,7 +230,7 @@ function buildGiveawayEmbed(gw) {
         .setColor(isEnded ? '#95A5A6' : '#F1C40F')
         .setDescription(
             `${getEmoji('gift')} **Giveaway:** ${gw.prize}\n` +
-            (gw.description ? `${getEmoji('yarrow')} ${gw.description}\n\n` : '\n') +
+            (gw.description ? `${gw.description}\n\n` : '\n') +
             `${getEmoji('arrow')} **${timeLabel}:** <t:${ts}:R> (<t:${ts}:f>)\n` +
             `${getEmoji('mem')} **Entries:** ${(gw.participants || []).length}\n` +
             `${getEmoji('crown')} **Hosted by:** <@${gw.createdBy}>`
@@ -298,7 +298,16 @@ function buildAdminConfirmButtons(giveawayId, disabled = false, winnerCount = 1)
     const refreshEmoji = getEmojiObject('refresh');
     if (refreshEmoji) rerollAllBtn.setEmoji(refreshEmoji);
 
-    const rows = [new ActionRowBuilder().addComponents(confirmBtn, rerollAllBtn)];
+    const changeUserBtn = new ButtonBuilder()
+        .setCustomId(`giveaway_change_btn:${giveawayId}`)
+        .setLabel('Change Winner (Pick User)')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(disabled);
+
+    const memEmoji = getEmojiObject('mem');
+    if (memEmoji) changeUserBtn.setEmoji(memEmoji);
+
+    const rows = [new ActionRowBuilder().addComponents(confirmBtn, rerollAllBtn, changeUserBtn)];
 
     // Add per-spot reroll controls when there are multiple winner spots
     if (winnerCount > 1) {
@@ -606,6 +615,53 @@ async function rerollPendingWinners(client, giveawayId, adminUser, spotIndex = n
     return { ok: true, giveaway: gw, winners: gw.pendingWinners, rerolledSpot: spotIndex };
 }
 
+/**
+ * Replaces a specific pending winner spot with a chosen user, validating that:
+ * 1. The user entered the giveaway.
+ * 2. The user is not already in a winner slot (if so, reports their existing slot).
+ */
+function setPendingWinnerSpot(giveawayId, spotIndex, targetUserId, adminUser) {
+    const giveaways = loadGiveaways();
+    const gw = giveaways.find(g => String(g.id).toUpperCase() === String(giveawayId).toUpperCase());
+    if (!gw) return { ok: false, reason: 'Giveaway not found.' };
+    if (gw.announced) return { ok: false, reason: 'Winners have already been confirmed and announced.' };
+
+    if (!Array.isArray(gw.participants) || !gw.participants.includes(targetUserId)) {
+        return {
+            ok: false,
+            code: 'NOT_ENTERED',
+            reason: `<@${targetUserId}> has **not entered** giveaway \`${gw.id}\`! Only participants who entered can be selected as a winner.`,
+        };
+    }
+
+    if (!Array.isArray(gw.pendingWinners)) gw.pendingWinners = [];
+    const existingSlot = gw.pendingWinners.indexOf(targetUserId);
+    if (existingSlot !== -1) {
+        return {
+            ok: false,
+            code: 'ALREADY_WINNER',
+            slot: existingSlot + 1,
+            reason: `<@${targetUserId}> is already a winner in **Spot #${existingSlot + 1}**!`,
+        };
+    }
+
+    const idx = Math.max(0, Math.min(parseInt(spotIndex, 10) || 0, Math.max(0, gw.pendingWinners.length - 1)));
+    const previousWinnerId = gw.pendingWinners[idx] || null;
+    gw.pendingWinners[idx] = targetUserId;
+
+    if (!Array.isArray(gw.overrideHistory)) gw.overrideHistory = [];
+    gw.overrideHistory.push({
+        adminId: adminUser.id,
+        adminTag: adminUser.tag || adminUser.username,
+        action: `change_spot_${idx + 1}`,
+        winners: [...gw.pendingWinners],
+        timestamp: Date.now(),
+    });
+
+    saveGiveaways(giveaways);
+    return { ok: true, giveaway: gw, winners: gw.pendingWinners, spotIndex: idx, previousWinnerId };
+}
+
 async function checkGiveaways(client) {
     const giveaways = loadGiveaways();
     const now = Date.now();
@@ -636,5 +692,6 @@ module.exports = {
     endGiveaway,
     confirmGiveawayWinners,
     rerollPendingWinners,
+    setPendingWinnerSpot,
     checkGiveaways,
 };
